@@ -30,11 +30,19 @@ class AppState: ObservableObject {
     @Published var pairedTokenID: String?
     @Published var selectedApps: FamilyActivitySelection = FamilyActivitySelection()
 
+    // MARK: - Computed Properties
+
+    var hasCompletedOnboarding: Bool {
+        let hasApps = !selectedApps.applicationTokens.isEmpty || !selectedApps.categoryTokens.isEmpty
+        return isPaired && hasApps
+    }
+
     // MARK: - Init
 
     private init() {
         loadState()
         observeChanges()
+        print("[AppState] Init complete — isPaired: \(isPaired), hasCompletedOnboarding: \(hasCompletedOnboarding)")
     }
 
     // MARK: - Auto-Save Observers
@@ -74,8 +82,9 @@ class AppState: ObservableObject {
         if let data = defaults?.data(forKey: Keys.selectedApps),
            let selection = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) {
             selectedApps = selection
-            print("Loaded \(selection.applicationTokens.count) apps, \(selection.categoryTokens.count) categories")
+            print("[AppState] Loaded \(selection.applicationTokens.count) apps, \(selection.categoryTokens.count) categories")
         }
+        print("[AppState] loadState — isPaired: \(isPaired), tokenID: \(pairedTokenID ?? "nil"), isBlocking: \(isBlocking)")
     }
 
     func saveState() {
@@ -88,6 +97,7 @@ class AppState: ObservableObject {
         }
 
         defaults?.synchronize()
+        print("[AppState] saveState — isPaired: \(isPaired), tokenID: \(pairedTokenID ?? "nil"), apps: \(selectedApps.applicationTokens.count), categories: \(selectedApps.categoryTokens.count)")
     }
 
     // MARK: - Selected Apps
