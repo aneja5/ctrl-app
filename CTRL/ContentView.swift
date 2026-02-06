@@ -1,178 +1,189 @@
 import SwiftUI
-
-struct ScanRecord: Identifiable {
-    let id = UUID()
-    let tagID: String
-    let timestamp: Date
-}
+import FamilyControls
 
 struct ContentView: View {
+
+    // MARK: - State
+
     @StateObject private var nfcManager = NFCManager()
-    @State private var scanHistory: [ScanRecord] = []
-    @State private var showCopied = false
+    @StateObject private var blockingManager = BlockingManager()
+    @ObservedObject private var appState = AppState.shared
+
+    @State private var showAppPicker = false
+    @State private var pickerSelection = FamilyActivitySelection()
+
+    // MARK: - Body
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Status Card
-                    statusCard
+        ZStack {
+            Color(red: 0.1, green: 0.1, blue: 0.1)
+                .ignoresSafeArea()
 
-                    // Scan Button
-                    scanButton
+            VStack(spacing: 32) {
 
-                    // Scanning Indicator
-                    if nfcManager.isScanning {
-                        scanningIndicator
-                    }
+                // MARK: Status Section
 
-                    // Last Scanned Tag Card
-                    if let lastTagID = nfcManager.lastTagID {
-                        lastTagCard(tagID: lastTagID)
-                    }
-
-                    // Error Message
-                    if let errorMessage = nfcManager.errorMessage {
-                        errorCard(message: errorMessage)
-                    }
-
-                    // Scan History
-                    if !scanHistory.isEmpty {
-                        historySection
-                    }
-
-                    Spacer(minLength: 40)
-
-                    // Footer
-                    footer
-                }
-                .padding()
-            }
-            .navigationTitle("CTRL")
-        }
-    }
-
-    // MARK: - Status Card
-
-    private var statusCard: some View {
-        HStack {
-            Image(systemName: nfcManager.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .foregroundColor(nfcManager.isAvailable ? .green : .red)
-                .font(.title2)
-
-            Text(nfcManager.isAvailable ? "NFC Available" : "NFC Not Available")
-                .font(.headline)
-
-            Spacer()
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-    }
-
-    // MARK: - Scan Button
-
-    private var scanButton: some View {
-        Button(action: performScan) {
-            HStack {
-                Image(systemName: "wave.3.right")
-                Text("Scan NFC Tag")
-                    .fontWeight(.semibold)
-            }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(nfcManager.isScanning ? Color.gray : Color.blue)
-            .foregroundColor(.white)
-            .cornerRadius(12)
-        }
-        .disabled(nfcManager.isScanning || !nfcManager.isAvailable)
-    }
-
-    // MARK: - Scanning Indicator
-
-    private var scanningIndicator: some View {
-        HStack(spacing: 12) {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle())
-            Text("Scanning...")
-                .foregroundColor(.secondary)
-        }
-        .padding()
-    }
-
-    // MARK: - Last Tag Card
-
-    private func lastTagCard(tagID: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Last Scanned Tag")
-                .font(.headline)
-                .foregroundColor(.secondary)
-
-            HStack {
-                Text(tagID)
-                    .font(.system(.body, design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                statusSection
 
                 Spacer()
 
-                Button(action: { copyToClipboard(tagID) }) {
-                    Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
-                        .foregroundColor(showCopied ? .green : .blue)
-                        .font(.title3)
+                // MARK: App Selection Button
+
+                selectAppsButton
+
+                Spacer()
+
+                // MARK: Main Action - NFC Toggle
+
+                nfcToggleButton
+
+                Spacer()
+
+                // MARK: Footer
+
+                footer
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+        }
+        .familyActivityPicker(
+            isPresented: $showAppPicker,
+            selection: $pickerSelection
+        )
+        .onChange(of: pickerSelection) {
+            appState.saveSelectedApps(pickerSelection)
+        }
+        .onAppear {
+            pickerSelection = appState.selectedApps
+        }
+        .task {
+            let authorized = await blockingManager.requestAuthorization()
+            appState.isAuthorized = authorized
+        }
+    }
+
+    // MARK: - Status Section
+
+    private var statusSection: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                // Authorization status
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(appState.isAuthorized ? Color.green : Color.red)
+                        .frame(width: 8, height: 8)
+                    Text(appState.isAuthorized ? "Authorized" : "Not Authorized")
+                        .font(.caption)
+                        .foregroundColor(appState.isAuthorized ? .green : .red)
                 }
+
+                Spacer()
+
+                // Blocking status
+                Text(blockingManager.isBlocking ? "BLOCKING" : "NOT BLOCKING")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(blockingManager.isBlocking ? .green : Color(.systemGray))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(blockingManager.isBlocking
+                                  ? Color.green.opacity(0.15)
+                                  : Color(.systemGray).opacity(0.15))
+                    )
+            }
+
+            // Apps selected count
+            HStack {
+                Image(systemName: "app.badge")
+                    .foregroundColor(Color(.systemGray))
+                Text("\(appCount) app\(appCount == 1 ? "" : "s") selected")
+                    .font(.subheadline)
+                    .foregroundColor(Color(.systemGray))
+                Spacer()
             }
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .padding(16)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(16)
     }
 
-    // MARK: - Error Card
+    // MARK: - Select Apps Button
 
-    private func errorCard(message: String) -> some View {
-        HStack {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
-
-            Text(message)
-                .font(.subheadline)
-                .foregroundColor(.orange)
-
-            Spacer()
+    private var selectAppsButton: some View {
+        Button {
+            showAppPicker = true
+        } label: {
+            HStack {
+                Image(systemName: "square.grid.2x2")
+                    .font(.title3)
+                Text("Select Apps to Block")
+                    .fontWeight(.medium)
+                Spacer()
+                Text("\(appCount)")
+                    .font(.callout.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.12))
+                    .cornerRadius(8)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(Color(.systemGray))
+            }
+            .padding(16)
+            .foregroundColor(.white)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(14)
         }
-        .padding()
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(12)
     }
 
-    // MARK: - History Section
+    // MARK: - NFC Toggle Button
 
-    private var historySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Scan History")
-                .font(.headline)
-                .foregroundColor(.secondary)
+    private var nfcToggleButton: some View {
+        VStack(spacing: 20) {
+            Button(action: performNFCScan) {
+                ZStack {
+                    Circle()
+                        .fill(blockingManager.isBlocking
+                              ? Color.green.opacity(0.15)
+                              : Color.white.opacity(0.08))
+                        .frame(width: 140, height: 140)
 
-            ForEach(scanHistory) { record in
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(record.tagID)
-                            .font(.system(.caption, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                    Circle()
+                        .stroke(blockingManager.isBlocking
+                                ? Color.green.opacity(0.4)
+                                : Color.white.opacity(0.15),
+                                lineWidth: 2)
+                        .frame(width: 140, height: 140)
 
-                        Text(record.timestamp, style: .time)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer()
+                    Image(systemName: blockingManager.isBlocking
+                          ? "lock.fill"
+                          : "lock.open")
+                        .font(.system(size: 44))
+                        .foregroundColor(blockingManager.isBlocking ? .green : .white)
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(Color(.systemGray6))
-                .cornerRadius(8)
+            }
+            .disabled(!nfcManager.isAvailable || nfcManager.isScanning)
+
+            Text("Tap Token to Toggle")
+                .font(.headline)
+                .foregroundColor(Color(.systemGray))
+
+            if nfcManager.isScanning {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    Text("Scanning...")
+                        .font(.subheadline)
+                        .foregroundColor(Color(.systemGray))
+                }
+            }
+
+            if let error = nfcManager.errorMessage {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .multilineTextAlignment(.center)
             }
         }
     }
@@ -181,42 +192,41 @@ struct ContentView: View {
 
     private var footer: some View {
         VStack(spacing: 4) {
-            Text("CTRL - Day 1 Test Build")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-
+            Text("CTRL")
+                .font(.footnote.weight(.medium))
+                .foregroundColor(Color(.systemGray))
             Text("getctrl.in")
-                .font(.footnote)
-                .foregroundColor(.blue)
+                .font(.caption2)
+                .foregroundColor(Color(.systemGray2))
         }
+    }
+
+    // MARK: - Helpers
+
+    private var appCount: Int {
+        appState.selectedApps.applicationTokens.count + appState.selectedApps.categoryTokens.count
     }
 
     // MARK: - Actions
 
-    private func performScan() {
+    private func performNFCScan() {
+        let feedbackGenerator = UINotificationFeedbackGenerator()
+        feedbackGenerator.prepare()
+
         nfcManager.scan { result in
             switch result {
-            case .success(let tagID):
-                let record = ScanRecord(tagID: tagID, timestamp: Date())
-                scanHistory.insert(record, at: 0)
-
-                // Keep only last 10 scans
-                if scanHistory.count > 10 {
-                    scanHistory = Array(scanHistory.prefix(10))
-                }
+            case .success:
+                blockingManager.toggleBlocking(for: appState.selectedApps)
+                appState.isBlocking = blockingManager.isBlocking
+                feedbackGenerator.notificationOccurred(.success)
 
             case .failure(let error):
+                if case NFCError.userCancelled = error {
+                    return
+                }
+                feedbackGenerator.notificationOccurred(.error)
                 print("Scan failed: \(error.localizedDescription)")
             }
-        }
-    }
-
-    private func copyToClipboard(_ text: String) {
-        UIPasteboard.general.string = text
-        showCopied = true
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            showCopied = false
         }
     }
 }
