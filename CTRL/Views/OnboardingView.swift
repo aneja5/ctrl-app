@@ -14,7 +14,6 @@ struct OnboardingView: View {
     @State private var currentPage = 0
     @State private var showAppPicker = false
     @State private var pickerSelection = FamilyActivitySelection()
-    @State private var isPulsing = false
     @State private var showPairSuccess = false
     @State private var scanError: String?
 
@@ -155,13 +154,6 @@ struct OnboardingView: View {
                     Image(systemName: "wave.3.right.circle.fill")
                         .font(.system(size: 100))
                         .foregroundColor(CTRLColors.accent)
-                        .scaleEffect(isPulsing ? 1.1 : 1.0)
-                        .opacity(isPulsing ? 0.8 : 1.0)
-                        .animation(
-                            .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
-                            value: isPulsing
-                        )
-                        .onAppear { isPulsing = true }
                 }
             }
 
@@ -252,9 +244,9 @@ struct OnboardingView: View {
             Button {
                 completeOnboarding()
             } label: {
-                Text("Done")
+                Text(selectedAppCount > 0 ? "Done" : "Skip for Now")
                     .font(CTRLFonts.headline())
-                    .foregroundColor(selectedAppCount > 0 ? CTRLColors.background : CTRLColors.textMuted)
+                    .foregroundColor(selectedAppCount > 0 ? CTRLColors.background : CTRLColors.textSecondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(selectedAppCount > 0 ? CTRLColors.accent : CTRLColors.cardBackground)
@@ -262,7 +254,6 @@ struct OnboardingView: View {
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
-            .disabled(selectedAppCount == 0)
             .padding(.horizontal, 24)
             .padding(.bottom, 48)
         }

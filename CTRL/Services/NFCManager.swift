@@ -23,6 +23,14 @@ class NFCManager: NSObject, ObservableObject {
     private var completionHandler: ((Result<String, Error>) -> Void)?
     private let feedbackGenerator = UINotificationFeedbackGenerator()
 
+    // MARK: - Lifecycle
+
+    deinit {
+        session?.invalidate()
+        session = nil
+        completionHandler = nil
+    }
+
     // MARK: - Public Methods
 
     func scan(completion: @escaping (Result<String, Error>) -> Void) {
@@ -50,6 +58,10 @@ class NFCManager: NSObject, ObservableObject {
 // MARK: - NFCNDEFReaderSessionDelegate
 
 extension NFCManager: NFCNDEFReaderSessionDelegate {
+
+    func readerSessionDidBecomeActive(_ session: NFCNDEFReaderSession) {
+        print("NFC session became active")
+    }
 
     func readerSession(_ session: NFCNDEFReaderSession, didInvalidateWithError error: Error) {
         DispatchQueue.main.async { [weak self] in

@@ -12,23 +12,23 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if appState.hasCompletedOnboarding {
+            if appState.isPaired {
                 HomeView(
                     nfcManager: nfcManager,
                     blockingManager: blockingManager
                 )
                 .onAppear {
-                    print("[RootView] Showing HomeView")
+                    print("[RootView] Showing HomeView — isPaired: \(appState.isPaired)")
                 }
             } else {
                 OnboardingView {
                     print("[RootView] onComplete callback fired")
                 }
                 .onAppear {
-                    print("[RootView] Showing OnboardingView — hasCompletedOnboarding: \(appState.hasCompletedOnboarding)")
+                    print("[RootView] Showing OnboardingView — isPaired: \(appState.isPaired)")
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.4), value: appState.hasCompletedOnboarding)
+        .animation(.easeInOut(duration: 0.4), value: appState.isPaired)
     }
 }

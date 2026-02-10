@@ -10,7 +10,6 @@ struct HomeView: View {
 
     // MARK: - State
 
-    @State private var isPulsing = false
     @State private var showWrongTokenAlert = false
     @State private var showSettings = false
 
@@ -58,12 +57,6 @@ struct HomeView: View {
         .task {
             let authorized = await blockingManager.requestAuthorization()
             appState.isAuthorized = authorized
-
-            // Restore blocking state if app was killed while blocking
-            if appState.isBlocking && !blockingManager.isBlocking {
-                print("[HomeView] Restoring blocking state from persistence")
-                blockingManager.activateBlocking(for: appState.selectedApps)
-            }
         }
     }
 
@@ -95,19 +88,6 @@ struct HomeView: View {
         VStack(spacing: 24) {
             Button(action: performNFCScan) {
                 ZStack {
-                    // Pulse ring (only when blocking)
-                    if blockingManager.isBlocking {
-                        Circle()
-                            .stroke(CTRLColors.accent.opacity(0.3), lineWidth: 2)
-                            .frame(width: 180, height: 180)
-                            .scaleEffect(isPulsing ? 1.15 : 1.0)
-                            .opacity(isPulsing ? 0.0 : 0.6)
-                            .animation(
-                                .easeOut(duration: 1.8).repeatForever(autoreverses: false),
-                                value: isPulsing
-                            )
-                    }
-
                     // Main circle
                     Circle()
                         .fill(blockingManager.isBlocking
@@ -128,18 +108,6 @@ struct HomeView: View {
                 }
             }
             .disabled(!nfcManager.isAvailable || nfcManager.isScanning)
-            .onChange(of: blockingManager.isBlocking) {
-                if blockingManager.isBlocking {
-                    isPulsing = true
-                } else {
-                    isPulsing = false
-                }
-            }
-            .onAppear {
-                if blockingManager.isBlocking {
-                    isPulsing = true
-                }
-            }
 
             // Label
             VStack(spacing: 8) {
@@ -147,9 +115,7 @@ struct HomeView: View {
                     .font(CTRLFonts.title())
                     .foregroundColor(CTRLColors.textPrimary)
 
-                Text(blockingManager.isBlocking
-                     ? "\(appCount) app\(appCount == 1 ? "" : "s") blocked"
-                     : "\(appCount) app\(appCount == 1 ? "" : "s") selected")
+                Text(subtitleText)
                     .font(CTRLFonts.body())
                     .foregroundColor(CTRLColors.textSecondary)
             }
@@ -208,7 +174,25 @@ struct HomeView: View {
     // MARK: - Helpers
 
     private var appCount: Int {
-        appState.selectedApps.applicationTokens.count + appState.selectedApps.categoryTokens.count
+        if let mode = appState.activeMode {
+            return mode.appCount
+        }
+        return appState.selectedApps.applicationTokens.count + appState.selectedApps.categoryTokens.count
+    }
+
+    private var subtitleText: String {
+        if let mode = appState.activeMode {
+            if blockingManager.isBlocking {
+                return "\(mode.name) · \(appCount) app\(appCount == 1 ? "" : "s") blocked"
+            } else {
+                return "\(mode.name) · \(appCount) app\(appCount == 1 ? "" : "s")"
+            }
+        }
+
+        if blockingManager.isBlocking {
+            return "\(appCount) app\(appCount == 1 ? "" : "s") blocked"
+        }
+        return "\(appCount) app\(appCount == 1 ? "" : "s") selected"
     }
 
     // MARK: - Actions
@@ -221,7 +205,7 @@ struct HomeView: View {
             switch result {
             case .success(let tagID):
                 // Verify token matches paired token
-                if let pairedID = appState.pairedTokenID, tagID != pairedID {
+                guard let pairedID = appState.pairedTokenID, tagID == pairedID else {
                     let errorFeedback = UINotificationFeedbackGenerator()
                     errorFeedback.notificationOccurred(.error)
                     showWrongTokenAlert = true
@@ -231,7 +215,11 @@ struct HomeView: View {
                 feedback.impactOccurred()
 
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                    blockingManager.toggleBlocking(for: appState.selectedApps)
+                    if let mode = appState.activeMode {
+                        blockingManager.toggleBlocking(for: mode.appSelection)
+                    } else {
+                        blockingManager.toggleBlocking(for: appState.selectedApps)
+                    }
                     appState.isBlocking = blockingManager.isBlocking
                 }
 

@@ -12,6 +12,18 @@ class BlockingManager: ObservableObject {
     @Published var isBlocking: Bool = false
     @Published var blockedAppsCount: Int = 0
 
+    // MARK: - Init
+
+    init() {
+        // Check if ManagedSettingsStore has active shields from a previous session
+        let hasShieldedApps = store.shield.applications != nil
+        let hasShieldedCategories = store.shield.applicationCategories != nil
+        if hasShieldedApps || hasShieldedCategories {
+            isBlocking = true
+            print("[BlockingManager] Restored blocking state from ManagedSettingsStore")
+        }
+    }
+
     // MARK: - Authorization
 
     func requestAuthorization() async -> Bool {
@@ -31,7 +43,7 @@ class BlockingManager: ObservableObject {
         store.shield.applicationCategories = .specific(selection.categoryTokens)
         blockedAppsCount = selection.applicationTokens.count + selection.categoryTokens.count
         isBlocking = true
-        print("Blocking activated")
+        print("[BlockingManager] Blocking activated — \(blockedAppsCount) apps/categories")
     }
 
     func deactivateBlocking() {
@@ -40,7 +52,7 @@ class BlockingManager: ObservableObject {
         store.clearAllSettings()
         blockedAppsCount = 0
         isBlocking = false
-        print("Blocking deactivated")
+        print("[BlockingManager] Blocking deactivated")
     }
 
     func toggleBlocking(for selection: FamilyActivitySelection) {
