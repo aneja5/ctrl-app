@@ -1,6 +1,31 @@
 import Foundation
 import FamilyControls
 
+// MARK: - Daily Focus Entry
+
+struct DailyFocusEntry: Codable, Identifiable {
+    var id: String { date }
+    let date: String           // "yyyy-MM-dd"
+    var totalSeconds: TimeInterval
+
+    static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    static func todayKey() -> String {
+        dateFormatter.string(from: Date())
+    }
+
+    func dateValue() -> Date? {
+        DailyFocusEntry.dateFormatter.date(from: date)
+    }
+}
+
+// MARK: - Blocking Mode
+
 struct BlockingMode: Identifiable, Codable {
     var id: UUID = UUID()
     var name: String

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct HomeView: View {
 
@@ -12,6 +13,7 @@ struct HomeView: View {
 
     @State private var showWrongTokenAlert = false
     @State private var showSettings = false
+    @State private var currentTime = Date()
 
     // MARK: - Body
 
@@ -33,6 +35,10 @@ struct HomeView: View {
                 // MARK: Main Action Button
 
                 actionButton
+
+                // MARK: Mode Selector
+
+                modeSelector
 
                 Spacer()
 
@@ -115,7 +121,9 @@ struct HomeView: View {
                     .font(CTRLFonts.title())
                     .foregroundColor(CTRLColors.textPrimary)
 
-                Text(subtitleText)
+                Text(blockingManager.isBlocking
+                     ? "\(appState.activeMode?.appCount ?? 0) app\(appState.activeMode?.appCount == 1 ? "" : "s") blocked"
+                     : "\(appState.activeMode?.appCount ?? 0) app\(appState.activeMode?.appCount == 1 ? "" : "s") selected")
                     .font(CTRLFonts.body())
                     .foregroundColor(CTRLColors.textSecondary)
             }
@@ -150,6 +158,23 @@ struct HomeView: View {
                 Spacer()
             }
 
+            // Focus time display
+            HStack(spacing: 8) {
+                Image(systemName: "clock")
+                    .font(.system(size: 13))
+                    .foregroundColor(CTRLColors.accent)
+
+                Text(formattedFocusTime)
+                    .font(CTRLFonts.mono())
+                    .foregroundColor(CTRLColors.textPrimary)
+
+                Spacer()
+
+                Text("Total Focus")
+                    .font(CTRLFonts.caption())
+                    .foregroundColor(CTRLColors.textMuted)
+            }
+
             // Token ID
             if let tokenID = appState.pairedTokenID {
                 HStack {
@@ -169,30 +194,71 @@ struct HomeView: View {
         }
         .padding(16)
         .ctrlCard()
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { time in
+            if blockingManager.isBlocking {
+                currentTime = time
+            }
+        }
+    }
+
+    // MARK: - Mode Selector
+
+    private var modeSelector: some View {
+        VStack(spacing: 4) {
+            Menu {
+                ForEach(appState.modes) { mode in
+                    Button(action: {
+                        if !blockingManager.isBlocking {
+                            appState.setActiveMode(id: mode.id)
+                        }
+                    }) {
+                        HStack {
+                            Text(mode.name)
+                            if appState.activeModeId == mode.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .disabled(blockingManager.isBlocking && appState.activeModeId != mode.id)
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(appState.activeMode?.name ?? "Select Mode")
+                        .font(.headline)
+                        .foregroundColor(CTRLColors.textPrimary)
+
+                    Image(systemName: "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(CTRLColors.textSecondary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(CTRLColors.cardBackground)
+                .cornerRadius(25)
+            }
+            .disabled(blockingManager.isBlocking)
+            .opacity(blockingManager.isBlocking ? 0.5 : 1.0)
+
+            if blockingManager.isBlocking {
+                Text("Unlock to change mode")
+                    .font(.caption)
+                    .foregroundColor(CTRLColors.textMuted)
+                    .padding(.top, 4)
+            }
+        }
+        .padding(.top, 16)
     }
 
     // MARK: - Helpers
 
-    private var appCount: Int {
-        if let mode = appState.activeMode {
-            return mode.appCount
-        }
-        return appState.selectedApps.applicationTokens.count + appState.selectedApps.categoryTokens.count
-    }
-
-    private var subtitleText: String {
-        if let mode = appState.activeMode {
-            if blockingManager.isBlocking {
-                return "\(mode.name) · \(appCount) app\(appCount == 1 ? "" : "s") blocked"
-            } else {
-                return "\(mode.name) · \(appCount) app\(appCount == 1 ? "" : "s")"
-            }
-        }
-
-        if blockingManager.isBlocking {
-            return "\(appCount) app\(appCount == 1 ? "" : "s") blocked"
-        }
-        return "\(appCount) app\(appCount == 1 ? "" : "s") selected"
+    private var formattedFocusTime: String {
+        let total = appState.totalBlockedSeconds + appState.currentSessionSeconds
+        // Use currentTime to force SwiftUI refresh
+        let _ = currentTime
+        let hours = Int(total) / 3600
+        let minutes = (Int(total) % 3600) / 60
+        let seconds = Int(total) % 60
+        return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
     }
 
     // MARK: - Actions
@@ -215,12 +281,20 @@ struct HomeView: View {
                 feedback.impactOccurred()
 
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                    let wasBlocking = blockingManager.isBlocking
                     if let mode = appState.activeMode {
                         blockingManager.toggleBlocking(for: mode.appSelection)
                     } else {
                         blockingManager.toggleBlocking(for: appState.selectedApps)
                     }
                     appState.isBlocking = blockingManager.isBlocking
+
+                    // Start or stop focus timer
+                    if !wasBlocking && blockingManager.isBlocking {
+                        appState.startBlockingTimer()
+                    } else if wasBlocking && !blockingManager.isBlocking {
+                        appState.stopBlockingTimer()
+                    }
                 }
 
             case .failure(let error):

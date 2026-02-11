@@ -23,6 +23,7 @@
 		D4000001000000005 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000006 /* SettingsView.swift */; };
 		D4000001000000007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000008 /* RootView.swift */; };
 		F6000001000000001 /* EditModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6000001000000002 /* EditModeView.swift */; };
+		G7000001000000001 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G7000001000000002 /* StatsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +72,7 @@
 		D4000001000000006 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D4000001000000008 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		F6000001000000002 /* EditModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditModeView.swift; sourceTree = "<group>"; };
+		G7000001000000002 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -160,6 +162,7 @@
 				D4000001000000006 /* SettingsView.swift */,
 				D4000001000000008 /* RootView.swift */,
 			F6000001000000002 /* EditModeView.swift */,
+			G7000001000000002 /* StatsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -294,6 +297,7 @@
 				D4000001000000005 /* SettingsView.swift in Sources */,
 				D4000001000000007 /* RootView.swift in Sources */,
 				F6000001000000001 /* EditModeView.swift in Sources */,
+				G7000001000000001 /* StatsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

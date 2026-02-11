@@ -19,6 +19,10 @@ class AppState: ObservableObject {
         static let emergencyResetDate = "ctrl_emergency_reset_date"
         static let modesData = "ctrl_modes_data"
         static let activeModeId = "ctrl_active_mode_id"
+        static let totalBlockedSeconds = "ctrl_total_blocked_seconds"
+        static let focusDate = "ctrl_focus_date"
+        static let focusHistory = "ctrl_focus_history"
+        static let blockingStartDate = "ctrl_blocking_start_date"
     }
 
     // MARK: - Persistence
@@ -36,7 +40,11 @@ class AppState: ObservableObject {
     @Published var modes: [BlockingMode] = []
     @Published var activeModeId: UUID? = nil
     @Published var emergencyUnlocksRemaining: Int = 5
+    @Published var totalBlockedSeconds: TimeInterval = 0
+    @Published var focusHistory: [DailyFocusEntry] = []
     var lastEmergencyResetDate: Date?
+    var blockingStartDate: Date? = nil
+    var focusDate: Date? = nil
 
     static let maxModes = 6
 
@@ -145,6 +153,21 @@ class AppState: ObservableObject {
             emergencyUnlocksRemaining = 5
         }
         lastEmergencyResetDate = defaults.object(forKey: Keys.emergencyResetDate) as? Date
+        totalBlockedSeconds = defaults.double(forKey: Keys.totalBlockedSeconds)
+        focusDate = defaults.object(forKey: Keys.focusDate) as? Date
+        if let data = defaults.data(forKey: Keys.focusHistory),
+           let history = try? JSONDecoder().decode([DailyFocusEntry].self, from: data) {
+            focusHistory = history
+        }
+        blockingStartDate = defaults.object(forKey: Keys.blockingStartDate) as? Date
+
+        // If app was blocking but no start date recorded, set it now
+        if isBlocking && blockingStartDate == nil {
+            blockingStartDate = Date()
+            print("[AppState] Restored missing blockingStartDate")
+        }
+
+        checkAndResetDailyFocusTime()
         checkAndResetMonthlyAllowance()
 
         print("[AppState] loadState — isPaired: \(isPaired), tokenID: \(pairedTokenID ?? "nil"), modes: \(modes.count), activeModeId: \(activeModeId?.uuidString ?? "nil"), emergencyUnlocks: \(emergencyUnlocksRemaining)")
@@ -167,6 +190,19 @@ class AppState: ObservableObject {
         defaults.set(emergencyUnlocksRemaining, forKey: Keys.emergencyUnlocks)
         if let resetDate = lastEmergencyResetDate {
             defaults.set(resetDate, forKey: Keys.emergencyResetDate)
+        }
+        defaults.set(totalBlockedSeconds, forKey: Keys.totalBlockedSeconds)
+        if let date = focusDate {
+            defaults.set(date, forKey: Keys.focusDate)
+        }
+        if let data = try? JSONEncoder().encode(focusHistory) {
+            defaults.set(data, forKey: Keys.focusHistory)
+        }
+
+        if let startDate = blockingStartDate {
+            defaults.set(startDate, forKey: Keys.blockingStartDate)
+        } else {
+            defaults.removeObject(forKey: Keys.blockingStartDate)
         }
 
         defaults.synchronize()
@@ -225,6 +261,119 @@ class AppState: ObservableObject {
             return true
         }
         return false
+    }
+
+    // MARK: - Focus Time Tracking
+
+    func checkAndResetDailyFocusTime() {
+        let calendar = Calendar.current
+        let today = Date()
+
+        if let lastDate = focusDate {
+            if !calendar.isDateInToday(lastDate) {
+                // Archive previous day's total to history
+                if totalBlockedSeconds > 0 {
+                    let dateKey = DailyFocusEntry.dateFormatter.string(from: lastDate)
+                    archiveFocusEntry(date: dateKey, seconds: totalBlockedSeconds)
+                }
+                totalBlockedSeconds = 0
+                focusDate = today
+                trimOldHistory()
+                saveState()
+                print("[AppState] Daily focus time reset to 0")
+            }
+        } else {
+            focusDate = today
+            saveState()
+        }
+    }
+
+    func startBlockingTimer() {
+        checkAndResetDailyFocusTime()
+        blockingStartDate = Date()
+        saveState()
+        print("[AppState] Started blocking timer at \(blockingStartDate!)")
+    }
+
+    func stopBlockingTimer() {
+        if let start = blockingStartDate {
+            let elapsed = Date().timeIntervalSince(start)
+            totalBlockedSeconds += elapsed
+            blockingStartDate = nil
+            logToTodayHistory(elapsed)
+            saveState()
+            print("[AppState] Blocking timer stopped, added \(Int(elapsed))s, total: \(Int(totalBlockedSeconds))s")
+        }
+    }
+
+    var currentSessionSeconds: TimeInterval {
+        guard let start = blockingStartDate else { return 0 }
+        return Date().timeIntervalSince(start)
+    }
+
+    // MARK: - Focus History Helpers
+
+    private func logToTodayHistory(_ seconds: TimeInterval) {
+        let todayKey = DailyFocusEntry.todayKey()
+        if let index = focusHistory.firstIndex(where: { $0.date == todayKey }) {
+            focusHistory[index].totalSeconds += seconds
+        } else {
+            focusHistory.append(DailyFocusEntry(date: todayKey, totalSeconds: seconds))
+        }
+    }
+
+    private func archiveFocusEntry(date: String, seconds: TimeInterval) {
+        if let index = focusHistory.firstIndex(where: { $0.date == date }) {
+            focusHistory[index].totalSeconds = seconds
+        } else {
+            focusHistory.append(DailyFocusEntry(date: date, totalSeconds: seconds))
+        }
+    }
+
+    private func trimOldHistory() {
+        // Keep only the last 90 days
+        let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        let cutoffKey = DailyFocusEntry.dateFormatter.string(from: cutoff)
+        focusHistory.removeAll { $0.date < cutoffKey }
+    }
+
+    // MARK: - Focus Stats
+
+    var todayFocusSeconds: TimeInterval {
+        let todayKey = DailyFocusEntry.todayKey()
+        let logged = focusHistory.first(where: { $0.date == todayKey })?.totalSeconds ?? 0
+        return logged + currentSessionSeconds
+    }
+
+    var weekFocusSeconds: TimeInterval {
+        let calendar = Calendar.current
+        guard let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) else { return 0 }
+        let weekStartKey = DailyFocusEntry.dateFormatter.string(from: weekStart)
+        return focusHistory
+            .filter { $0.date >= weekStartKey }
+            .reduce(0) { $0 + $1.totalSeconds } + currentSessionSeconds
+    }
+
+    var monthFocusSeconds: TimeInterval {
+        let calendar = Calendar.current
+        guard let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) else { return 0 }
+        let monthStartKey = DailyFocusEntry.dateFormatter.string(from: monthStart)
+        return focusHistory
+            .filter { $0.date >= monthStartKey }
+            .reduce(0) { $0 + $1.totalSeconds } + currentSessionSeconds
+    }
+
+    static func formatTime(_ seconds: TimeInterval) -> String {
+        let h = Int(seconds) / 3600
+        let m = (Int(seconds) % 3600) / 60
+        let s = Int(seconds) % 60
+        if h > 0 {
+            return String(format: "%dh %dm", h, m)
+        } else if m > 0 {
+            return String(format: "%dm %ds", m, s)
+        } else {
+            return String(format: "%ds", s)
+        }
     }
 
     // MARK: - Blocking Modes

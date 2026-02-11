@@ -20,11 +20,12 @@ struct SettingsView: View {
     // Mode management state
     @State private var showAddModeAlert = false
     @State private var newModeName = ""
-    @State private var showEditMode = false
-    @State private var editingMode: BlockingMode? = nil
+    @State private var modeToEdit: BlockingMode? = nil
     @State private var showDeleteConfirm = false
     @State private var modeToDelete: BlockingMode? = nil
     @State private var showDuplicateNameAlert = false
+    @State private var currentTime = Date()
+    @State private var showStats = false
 
     // MARK: - Body
 
@@ -35,6 +36,7 @@ struct SettingsView: View {
                     .ignoresSafeArea()
 
                 List {
+                    focusTimeSection
                     modesSection
                     tokenSection
                     emergencySection
@@ -54,6 +56,11 @@ struct SettingsView: View {
                 }
             }
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+                if blockingManager.isBlocking {
+                    currentTime = Date()
+                }
+            }
         }
         .alert("New Mode", isPresented: $showAddModeAlert) {
             TextField("Mode name", text: $newModeName)
@@ -90,12 +97,65 @@ struct SettingsView: View {
         } message: {
             Text("A mode with this name already exists. Please choose a different name.")
         }
-        .sheet(isPresented: $showEditMode) {
-            if let mode = editingMode {
-                EditModeView(mode: mode)
-                    .environmentObject(appState)
+        .sheet(item: $modeToEdit) { mode in
+            EditModeView(mode: mode)
+                .environmentObject(appState)
+                .environmentObject(blockingManager)
+        }
+        .sheet(isPresented: $showStats) {
+            StatsView()
+                .environmentObject(appState)
+        }
+    }
+
+    // MARK: - Section 0: Focus Time
+
+    private var focusTimeSection: some View {
+        Section("Focus Time") {
+            HStack {
+                Label("Today", systemImage: "sun.max")
+                    .foregroundColor(CTRLColors.textPrimary)
+                Spacer()
+                let _ = currentTime
+                Text(AppState.formatTime(appState.todayFocusSeconds))
+                    .foregroundColor(CTRLColors.textSecondary)
+                    .monospacedDigit()
+            }
+
+            HStack {
+                Label("This Week", systemImage: "calendar")
+                    .foregroundColor(CTRLColors.textPrimary)
+                Spacer()
+                let _ = currentTime
+                Text(AppState.formatTime(appState.weekFocusSeconds))
+                    .foregroundColor(CTRLColors.textSecondary)
+                    .monospacedDigit()
+            }
+
+            HStack {
+                Label("This Month", systemImage: "calendar.badge.clock")
+                    .foregroundColor(CTRLColors.textPrimary)
+                Spacer()
+                let _ = currentTime
+                Text(AppState.formatTime(appState.monthFocusSeconds))
+                    .foregroundColor(CTRLColors.textSecondary)
+                    .monospacedDigit()
+            }
+
+            Button {
+                showStats = true
+            } label: {
+                HStack {
+                    Label("View Stats", systemImage: "chart.bar")
+                        .foregroundColor(CTRLColors.accent)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(CTRLColors.textMuted)
+                }
             }
         }
+        .listRowBackground(CTRLColors.cardBackground)
     }
 
     // MARK: - Section 1: Modes
@@ -124,10 +184,9 @@ struct SettingsView: View {
                     Spacer()
 
                     // Edit button
-                    Button {
-                        editingMode = mode
-                        showEditMode = true
-                    } label: {
+                    Button(action: {
+                        modeToEdit = mode
+                    }) {
                         Image(systemName: "pencil")
                             .foregroundColor(CTRLColors.textSecondary)
                     }
@@ -329,6 +388,7 @@ struct SettingsView: View {
 
     private func performEmergencyUnlock() {
         if appState.useEmergencyUnlock() {
+            appState.stopBlockingTimer()
             blockingManager.deactivateBlocking()
             appState.isBlocking = false
             let feedback = UINotificationFeedbackGenerator()
