@@ -11,6 +11,7 @@ class BlockingManager: ObservableObject {
 
     @Published var isBlocking: Bool = false
     @Published var blockedAppsCount: Int = 0
+    @Published var strictModeActive: Bool = false
 
     // MARK: - Init
 
@@ -38,28 +39,42 @@ class BlockingManager: ObservableObject {
 
     // MARK: - Blocking Controls
 
-    func activateBlocking(for selection: FamilyActivitySelection) {
+    func activateBlocking(for selection: FamilyActivitySelection, strictMode: Bool = false) {
         store.shield.applications = selection.applicationTokens
         store.shield.applicationCategories = .specific(selection.categoryTokens)
         blockedAppsCount = selection.applicationTokens.count + selection.categoryTokens.count
+
+        // Strict mode restrictions
+        if strictMode {
+            store.application.denyAppRemoval = true
+            store.application.denyAppInstallation = true
+        }
+
         isBlocking = true
-        print("[BlockingManager] Blocking activated — \(blockedAppsCount) apps/categories")
+        strictModeActive = strictMode
+        print("[BlockingManager] Blocking activated — \(blockedAppsCount) apps/categories, strictMode: \(strictMode)")
     }
 
     func deactivateBlocking() {
         store.shield.applications = nil
         store.shield.applicationCategories = nil
+
+        // Clear strict mode restrictions
+        store.application.denyAppRemoval = false
+        store.application.denyAppInstallation = false
+
         store.clearAllSettings()
         blockedAppsCount = 0
         isBlocking = false
+        strictModeActive = false
         print("[BlockingManager] Blocking deactivated")
     }
 
-    func toggleBlocking(for selection: FamilyActivitySelection) {
+    func toggleBlocking(for selection: FamilyActivitySelection, strictMode: Bool = false) {
         if isBlocking {
             deactivateBlocking()
         } else {
-            activateBlocking(for: selection)
+            activateBlocking(for: selection, strictMode: strictMode)
         }
     }
 }

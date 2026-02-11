@@ -1,52 +1,62 @@
 import SwiftUI
-import Combine
 
 struct HomeView: View {
-
-    // MARK: - Environment
-
     @EnvironmentObject var appState: AppState
-    @ObservedObject var nfcManager: NFCManager
-    @ObservedObject var blockingManager: BlockingManager
-
-    // MARK: - State
+    @EnvironmentObject var nfcManager: NFCManager
+    @EnvironmentObject var blockingManager: BlockingManager
 
     @State private var showWrongTokenAlert = false
-    @State private var showSettings = false
     @State private var currentTime = Date()
+    @State private var showModeSheet = false
+    @State private var showActivity = false
+    @State private var showSettings = false
 
-    // MARK: - Body
+    private var isInSession: Bool {
+        blockingManager.isBlocking
+    }
 
     var body: some View {
         ZStack {
-            CTRLColors.background
-                .ignoresSafeArea()
+            // Background — warm charcoal
+            CTRLColors.base.ignoresSafeArea()
+
+            // Bronze glow when in session
+            if isInSession {
+                BronzeGlow()
+                    .offset(y: -80)
+                    .opacity(0.6)
+                    .transition(.opacity)
+            }
 
             VStack(spacing: 0) {
+                Spacer()
 
-                // MARK: Top Bar
-
-                topBar
-                    .padding(.horizontal, 24)
-                    .padding(.top, 8)
+                // Ritual State Display
+                stateDisplay
 
                 Spacer()
 
-                // MARK: Main Action Button
+                // Today Stats (only when unlocked)
+                if !isInSession {
+                    todayStats
+                        .padding(.bottom, CTRLSpacing.lg)
+                }
 
-                actionButton
+                // Primary CTA
+                primaryAction
+                    .padding(.horizontal, CTRLSpacing.screenPadding * 2)
 
-                // MARK: Mode Selector
-
+                // Mode Selector Pill
                 modeSelector
+                    .padding(.top, CTRLSpacing.md)
 
                 Spacer()
+                    .frame(height: 60)
 
-                // MARK: Status Card
-
-                statusCard
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
+                // Floating Dock
+                floatingDock
+                    .padding(.horizontal, CTRLSpacing.screenPadding)
+                    .padding(.bottom, CTRLSpacing.md)
             }
         }
         .alert("Wrong Token", isPresented: $showWrongTokenAlert) {
@@ -54,217 +64,239 @@ struct HomeView: View {
         } message: {
             Text("This token doesn't match your paired token. Use the same token you set up during onboarding.")
         }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
-                .environmentObject(appState)
-                .environmentObject(nfcManager)
-                .environmentObject(blockingManager)
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            if isInSession {
+                currentTime = Date()
+            }
         }
         .task {
             let authorized = await blockingManager.requestAuthorization()
             appState.isAuthorized = authorized
         }
-    }
-
-    // MARK: - Top Bar
-
-    private var topBar: some View {
-        HStack {
-            Text("CTRL")
-                .font(CTRLFonts.caption())
-                .foregroundColor(CTRLColors.textSecondary)
-                .textCase(.uppercase)
-                .tracking(2)
-
-            Spacer()
-
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 18))
-                    .foregroundColor(CTRLColors.textSecondary)
-            }
+        .sheet(isPresented: $showModeSheet) {
+            ModeSelectionSheet()
+                .environmentObject(appState)
+                .environmentObject(blockingManager)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(CTRLColors.surface1)
+        }
+        .sheet(isPresented: $showActivity) {
+            ActivityView()
+                .environmentObject(appState)
+                .presentationBackground(CTRLColors.base)
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .environmentObject(appState)
+                .environmentObject(blockingManager)
+                .presentationBackground(CTRLColors.base)
         }
     }
 
-    // MARK: - Action Button
+    // MARK: - Ritual State Display
 
-    private var actionButton: some View {
-        VStack(spacing: 24) {
-            Button(action: performNFCScan) {
-                ZStack {
-                    // Main circle
-                    Circle()
-                        .fill(blockingManager.isBlocking
-                              ? CTRLColors.accent
-                              : Color.clear)
-                        .frame(width: 160, height: 160)
+    private var stateDisplay: some View {
+        VStack(spacing: CTRLSpacing.md) {
+            if isInSession {
+                // In Session — serif ritual state
+                BreathingDot()
+                    .padding(.bottom, CTRLSpacing.xs)
 
-                    Circle()
-                        .stroke(CTRLColors.accent, lineWidth: blockingManager.isBlocking ? 0 : 3)
-                        .frame(width: 160, height: 160)
-
-                    // Lock icon
-                    Image(systemName: blockingManager.isBlocking ? "lock.fill" : "lock.open")
-                        .font(.system(size: 50))
-                        .foregroundColor(blockingManager.isBlocking
-                                         ? CTRLColors.background
-                                         : CTRLColors.accent)
-                }
-            }
-            .disabled(!nfcManager.isAvailable || nfcManager.isScanning)
-
-            // Label
-            VStack(spacing: 8) {
-                Text(blockingManager.isBlocking ? "Tap to Unlock" : "Tap to Focus")
-                    .font(CTRLFonts.title())
-                    .foregroundColor(CTRLColors.textPrimary)
-
-                Text(blockingManager.isBlocking
-                     ? "\(appState.activeMode?.appCount ?? 0) app\(appState.activeMode?.appCount == 1 ? "" : "s") blocked"
-                     : "\(appState.activeMode?.appCount ?? 0) app\(appState.activeMode?.appCount == 1 ? "" : "s") selected")
-                    .font(CTRLFonts.body())
-                    .foregroundColor(CTRLColors.textSecondary)
-            }
-
-            // Scanning indicator
-            if nfcManager.isScanning {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: CTRLColors.accent))
-                    Text("Scanning...")
-                        .font(CTRLFonts.caption())
-                        .foregroundColor(CTRLColors.textSecondary)
-                }
-            }
-        }
-    }
-
-    // MARK: - Status Card
-
-    private var statusCard: some View {
-        VStack(spacing: 12) {
-            // Status row
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(blockingManager.isBlocking ? CTRLColors.success : CTRLColors.textMuted)
-                    .frame(width: 8, height: 8)
-
-                Text(blockingManager.isBlocking ? "Focus Mode Active" : "Ready")
-                    .font(CTRLFonts.headline())
-                    .foregroundColor(CTRLColors.textPrimary)
-
-                Spacer()
-            }
-
-            // Focus time display
-            HStack(spacing: 8) {
-                Image(systemName: "clock")
-                    .font(.system(size: 13))
+                Text("in session")
+                    .font(CTRLFonts.display)
+                    .tracking(2)
                     .foregroundColor(CTRLColors.accent)
 
-                Text(formattedFocusTime)
-                    .font(CTRLFonts.mono())
+                Text(formatSessionTime())
+                    .font(CTRLFonts.timer)
+                    .foregroundColor(CTRLColors.textPrimary)
+                    .monospacedDigit()
+
+                Text(appState.activeMode?.name.lowercased() ?? "focus")
+                    .font(CTRLFonts.captionFont)
+                    .tracking(2)
+                    .foregroundColor(CTRLColors.textTertiary)
+
+            } else {
+                // Unlocked — serif ritual state
+                Text("unlocked")
+                    .font(CTRLFonts.display)
+                    .tracking(2)
                     .foregroundColor(CTRLColors.textPrimary)
 
-                Spacer()
-
-                Text("Total Focus")
-                    .font(CTRLFonts.caption())
-                    .foregroundColor(CTRLColors.textMuted)
-            }
-
-            // Token ID
-            if let tokenID = appState.pairedTokenID {
-                HStack {
-                    Image(systemName: "wave.3.right")
-                        .font(.system(size: 11))
-                        .foregroundColor(CTRLColors.textMuted)
-
-                    Text(tokenID)
-                        .font(CTRLFonts.mono())
-                        .foregroundColor(CTRLColors.textMuted)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-
-                    Spacer()
-                }
+                Text(scopeDescription)
+                    .font(CTRLFonts.captionFont)
+                    .tracking(1)
+                    .foregroundColor(CTRLColors.textTertiary)
+                    .padding(.top, CTRLSpacing.micro)
             }
         }
-        .padding(16)
-        .ctrlCard()
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { time in
-            if blockingManager.isBlocking {
-                currentTime = time
+        .animation(.easeOut(duration: 0.3), value: isInSession)
+    }
+
+    private var scopeDescription: String {
+        let count = appState.activeMode?.appCount ?? 0
+        return "\(count) app\(count == 1 ? "" : "s") in scope"
+    }
+
+    // MARK: - Today Stats
+
+    private var todayStats: some View {
+        HStack(spacing: CTRLSpacing.lg) {
+            VStack(spacing: 4) {
+                Text(formatTodayTime())
+                    .font(CTRLFonts.bodyFont)
+                    .foregroundColor(CTRLColors.textSecondary)
+                    .monospacedDigit()
+
+                Text("today")
+                    .font(CTRLFonts.micro)
+                    .foregroundColor(CTRLColors.textTertiary)
             }
         }
     }
 
-    // MARK: - Mode Selector
+    // MARK: - Primary Action
 
-    private var modeSelector: some View {
-        VStack(spacing: 4) {
-            Menu {
-                ForEach(appState.modes) { mode in
-                    Button(action: {
-                        if !blockingManager.isBlocking {
-                            appState.setActiveMode(id: mode.id)
-                        }
-                    }) {
-                        HStack {
-                            Text(mode.name)
-                            if appState.activeModeId == mode.id {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                    .disabled(blockingManager.isBlocking && appState.activeModeId != mode.id)
+    private var primaryAction: some View {
+        Group {
+            if isInSession {
+                Button(action: triggerNFCScan) {
+                    Text("End Session")
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Text(appState.activeMode?.name ?? "Select Mode")
-                        .font(.headline)
-                        .foregroundColor(CTRLColors.textPrimary)
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption)
-                        .foregroundColor(CTRLColors.textSecondary)
+                .buttonStyle(CTRLSecondaryButtonStyle(accentBorder: true))
+            } else {
+                Button(action: triggerNFCScan) {
+                    Text("Lock In")
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(CTRLColors.cardBackground)
-                .cornerRadius(25)
-            }
-            .disabled(blockingManager.isBlocking)
-            .opacity(blockingManager.isBlocking ? 0.5 : 1.0)
-
-            if blockingManager.isBlocking {
-                Text("Unlock to change mode")
-                    .font(.caption)
-                    .foregroundColor(CTRLColors.textMuted)
-                    .padding(.top, 4)
+                .buttonStyle(CTRLPrimaryButtonStyle(isActive: true))
             }
         }
-        .padding(.top, 16)
+        .disabled(!nfcManager.isAvailable || nfcManager.isScanning)
+    }
+
+    // MARK: - Mode Selector Pill
+
+    private var modeSelector: some View {
+        Button(action: {
+            if !isInSession {
+                showModeSheet = true
+            }
+        }) {
+            HStack(spacing: CTRLSpacing.xs) {
+                Text(appState.activeMode?.name.lowercased() ?? "select mode")
+                    .font(CTRLFonts.captionFont)
+                    .foregroundColor(CTRLColors.textSecondary)
+
+                if !isInSession {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(CTRLColors.textTertiary)
+                }
+            }
+            .padding(.horizontal, CTRLSpacing.md)
+            .padding(.vertical, CTRLSpacing.xs)
+            .background(
+                Capsule()
+                    .fill(CTRLColors.surface1)
+            )
+        }
+        .buttonStyle(CTRLGhostButtonStyle())
+        .disabled(isInSession)
+        .opacity(isInSession ? 0.3 : 1.0)
+    }
+
+    // MARK: - Floating Dock
+
+    private var floatingDock: some View {
+        SurfaceCard(padding: CTRLSpacing.md, cornerRadius: 28, elevation: 1) {
+            HStack(spacing: CTRLSpacing.md) {
+                // Activity Button
+                Button(action: { showActivity = true }) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(CTRLColors.textTertiary)
+                        .frame(width: 32, height: 32)
+                }
+
+                Spacer()
+
+                // Dock Status
+                HStack(spacing: CTRLSpacing.xs) {
+                    Circle()
+                        .fill(isInSession ? CTRLColors.accent : CTRLColors.textTertiary)
+                        .frame(width: 6, height: 6)
+
+                    if isInSession {
+                        Text(formatSessionTime())
+                            .font(CTRLFonts.captionFont)
+                            .foregroundColor(CTRLColors.textPrimary)
+                            .monospacedDigit()
+
+                        Text("session")
+                            .font(CTRLFonts.micro)
+                            .foregroundColor(CTRLColors.textTertiary)
+                    } else {
+                        Text(formatTodayTime())
+                            .font(CTRLFonts.captionFont)
+                            .foregroundColor(CTRLColors.textSecondary)
+                            .monospacedDigit()
+
+                        Text("today")
+                            .font(CTRLFonts.micro)
+                            .foregroundColor(CTRLColors.textTertiary)
+                    }
+                }
+
+                Spacer()
+
+                // Settings Button
+                Button(action: { showSettings = true }) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(CTRLColors.textTertiary)
+                        .frame(width: 32, height: 32)
+                }
+            }
+        }
     }
 
     // MARK: - Helpers
 
-    private var formattedFocusTime: String {
-        let total = appState.totalBlockedSeconds + appState.currentSessionSeconds
+    private func formatSessionTime() -> String {
         // Use currentTime to force SwiftUI refresh
         let _ = currentTime
-        let hours = Int(total) / 3600
-        let minutes = (Int(total) % 3600) / 60
-        let seconds = Int(total) % 60
-        return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        let seconds = Int(appState.currentSessionSeconds)
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        let secs = seconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        } else {
+            return String(format: "%d:%02d", minutes, secs)
+        }
+    }
+
+    private func formatTodayTime() -> String {
+        let seconds = Int(appState.todayFocusSeconds)
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+
+        if hours > 0 {
+            return String(format: "%dh %dm", hours, minutes)
+        } else if minutes > 0 {
+            return String(format: "%dm", minutes)
+        } else {
+            return "0m"
+        }
     }
 
     // MARK: - Actions
 
-    private func performNFCScan() {
-        let feedback = UIImpactFeedbackGenerator(style: .medium)
+    private func triggerNFCScan() {
+        let feedback = UIImpactFeedbackGenerator(style: isInSession ? .light : .medium)
         feedback.prepare()
 
         nfcManager.scan { result in
@@ -283,9 +315,9 @@ struct HomeView: View {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                     let wasBlocking = blockingManager.isBlocking
                     if let mode = appState.activeMode {
-                        blockingManager.toggleBlocking(for: mode.appSelection)
+                        blockingManager.toggleBlocking(for: mode.appSelection, strictMode: appState.strictModeEnabled)
                     } else {
-                        blockingManager.toggleBlocking(for: appState.selectedApps)
+                        blockingManager.toggleBlocking(for: appState.selectedApps, strictMode: appState.strictModeEnabled)
                     }
                     appState.isBlocking = blockingManager.isBlocking
 
@@ -297,13 +329,21 @@ struct HomeView: View {
                     }
                 }
 
+                // Double haptic for end session
+                if !blockingManager.isBlocking {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        let light = UIImpactFeedbackGenerator(style: .light)
+                        light.impactOccurred()
+                    }
+                }
+
             case .failure(let error):
                 if case NFCError.userCancelled = error {
                     return
                 }
                 let errorFeedback = UINotificationFeedbackGenerator()
                 errorFeedback.notificationOccurred(.error)
-                print("Scan failed: \(error.localizedDescription)")
+                print("[HomeView] NFC scan failed: \(error.localizedDescription)")
             }
         }
     }

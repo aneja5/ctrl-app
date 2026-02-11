@@ -24,6 +24,9 @@
 		D4000001000000007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000008 /* RootView.swift */; };
 		F6000001000000001 /* EditModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6000001000000002 /* EditModeView.swift */; };
 		G7000001000000001 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G7000001000000002 /* StatsView.swift */; };
+		H8000001000000001 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H8000001000000002 /* MainTabView.swift */; };
+		I9000001000000001 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = I9000001000000002 /* ActivityView.swift */; };
+		J1000001000000001 /* ModeSelectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = J1000001000000002 /* ModeSelectionSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +76,9 @@
 		D4000001000000008 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		F6000001000000002 /* EditModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditModeView.swift; sourceTree = "<group>"; };
 		G7000001000000002 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
+		H8000001000000002 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		I9000001000000002 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
+		J1000001000000002 /* ModeSelectionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelectionSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -163,6 +169,9 @@
 				D4000001000000008 /* RootView.swift */,
 			F6000001000000002 /* EditModeView.swift */,
 			G7000001000000002 /* StatsView.swift */,
+			H8000001000000002 /* MainTabView.swift */,
+			I9000001000000002 /* ActivityView.swift */,
+		J1000001000000002 /* ModeSelectionSheet.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -298,6 +307,9 @@
 				D4000001000000007 /* RootView.swift in Sources */,
 				F6000001000000001 /* EditModeView.swift in Sources */,
 				G7000001000000001 /* StatsView.swift in Sources */,
+				H8000001000000001 /* MainTabView.swift in Sources */,
+				I9000001000000001 /* ActivityView.swift in Sources */,
+				J1000001000000001 /* ModeSelectionSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

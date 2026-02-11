@@ -1,34 +1,32 @@
 import SwiftUI
 
 struct RootView: View {
-
-    // MARK: - Environment
-
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var nfcManager: NFCManager
     @EnvironmentObject var blockingManager: BlockingManager
 
-    // MARK: - Body
-
     var body: some View {
-        Group {
-            if appState.isPaired {
-                HomeView(
-                    nfcManager: nfcManager,
-                    blockingManager: blockingManager
-                )
-                .onAppear {
-                    print("[RootView] Showing HomeView — isPaired: \(appState.isPaired)")
-                }
-            } else {
-                OnboardingView {
-                    print("[RootView] onComplete callback fired")
-                }
-                .onAppear {
-                    print("[RootView] Showing OnboardingView — isPaired: \(appState.isPaired)")
+        ZStack {
+            CTRLColors.base.ignoresSafeArea()
+
+            Group {
+                if appState.isPaired {
+                    MainTabView()
+                        .transition(.opacity)
+                        .onAppear {
+                            print("[RootView] Showing MainTabView — isPaired: \(appState.isPaired)")
+                        }
+                } else {
+                    OnboardingView {
+                        print("[RootView] onComplete callback fired")
+                    }
+                    .transition(.opacity)
+                    .onAppear {
+                        print("[RootView] Showing OnboardingView — isPaired: \(appState.isPaired)")
+                    }
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.4), value: appState.isPaired)
+        .animation(.easeOut(duration: 0.3), value: appState.isPaired)
     }
 }

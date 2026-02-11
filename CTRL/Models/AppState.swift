@@ -23,6 +23,7 @@ class AppState: ObservableObject {
         static let focusDate = "ctrl_focus_date"
         static let focusHistory = "ctrl_focus_history"
         static let blockingStartDate = "ctrl_blocking_start_date"
+        static let strictMode = "ctrl_strict_mode"
     }
 
     // MARK: - Persistence
@@ -42,6 +43,7 @@ class AppState: ObservableObject {
     @Published var emergencyUnlocksRemaining: Int = 5
     @Published var totalBlockedSeconds: TimeInterval = 0
     @Published var focusHistory: [DailyFocusEntry] = []
+    @Published var strictModeEnabled: Bool = false
     var lastEmergencyResetDate: Date?
     var blockingStartDate: Date? = nil
     var focusDate: Date? = nil
@@ -160,6 +162,7 @@ class AppState: ObservableObject {
             focusHistory = history
         }
         blockingStartDate = defaults.object(forKey: Keys.blockingStartDate) as? Date
+        strictModeEnabled = defaults.bool(forKey: Keys.strictMode)
 
         // If app was blocking but no start date recorded, set it now
         if isBlocking && blockingStartDate == nil {
@@ -204,6 +207,7 @@ class AppState: ObservableObject {
         } else {
             defaults.removeObject(forKey: Keys.blockingStartDate)
         }
+        defaults.set(strictModeEnabled, forKey: Keys.strictMode)
 
         defaults.synchronize()
         print("[AppState] saveState — isPaired: \(isPaired), tokenID: \(pairedTokenID ?? "nil"), modes: \(modes.count), activeMode: \(activeMode?.name ?? "nil")")

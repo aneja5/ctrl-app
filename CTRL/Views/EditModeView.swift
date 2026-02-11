@@ -13,79 +13,29 @@ struct EditModeView: View {
     @State private var showDuplicateNameAlert = false
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                CTRLColors.background.ignoresSafeArea()
+        ZStack {
+            CTRLColors.base.ignoresSafeArea()
 
-                VStack(spacing: 24) {
-                    // Mode name field
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Mode Name")
-                            .font(.caption)
-                            .foregroundColor(CTRLColors.textSecondary)
+            VStack(spacing: CTRLSpacing.xl) {
+                // Header
+                header
+                    .padding(.top, CTRLSpacing.md)
 
-                        TextField("Enter name", text: $modeName)
-                            .padding()
-                            .background(CTRLColors.cardBackground)
-                            .cornerRadius(12)
-                            .foregroundColor(CTRLColors.textPrimary)
-                    }
-                    .padding(.horizontal)
+                // Mode Name
+                nameSection
 
-                    // App selection
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Blocked Apps")
-                            .font(.caption)
-                            .foregroundColor(CTRLColors.textSecondary)
-                            .padding(.horizontal)
+                // App Selection
+                appsSection
 
-                        Button(action: { showAppPicker = true }) {
-                            HStack {
-                                Label("Select Apps", systemImage: "square.grid.2x2")
-                                Spacer()
-                                Text("\(appCount) apps")
-                                    .foregroundColor(CTRLColors.textSecondary)
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(CTRLColors.textSecondary)
-                            }
-                            .padding()
-                            .background(CTRLColors.cardBackground)
-                            .cornerRadius(12)
-                            .foregroundColor(CTRLColors.textPrimary)
-                        }
-                        .padding(.horizontal)
-                    }
-
-                    Spacer()
-                }
-                .padding(.top, 24)
+                Spacer()
             }
-            .navigationTitle("Edit Mode")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundColor(CTRLColors.textSecondary)
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        saveMode()
-                    }
-                    .fontWeight(.semibold)
-                    .foregroundColor(CTRLColors.accent)
-                    .disabled(modeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .familyActivityPicker(isPresented: $showAppPicker, selection: $appSelection)
+            .padding(.horizontal, CTRLSpacing.screenPadding)
         }
         .onAppear {
             modeName = mode.name
             appSelection = mode.appSelection
         }
+        .familyActivityPicker(isPresented: $showAppPicker, selection: $appSelection)
         .alert("Duplicate Name", isPresented: $showDuplicateNameAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -93,12 +43,89 @@ struct EditModeView: View {
         }
     }
 
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            Button(action: { dismiss() }) {
+                Text("cancel")
+                    .font(CTRLFonts.bodyFont)
+                    .foregroundColor(CTRLColors.textSecondary)
+            }
+
+            Spacer()
+
+            Text("edit mode")
+                .font(CTRLFonts.h2)
+                .foregroundColor(CTRLColors.textPrimary)
+
+            Spacer()
+
+            Button(action: saveMode) {
+                Text("save")
+                    .font(CTRLFonts.bodyFont)
+                    .fontWeight(.medium)
+                    .foregroundColor(modeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? CTRLColors.textTertiary.opacity(0.5) : CTRLColors.accent)
+            }
+            .disabled(modeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
+    // MARK: - Name Section
+
+    private var nameSection: some View {
+        VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
+            CTRLSectionHeader(title: "Name")
+
+            SurfaceCard(padding: CTRLSpacing.md, cornerRadius: CTRLSpacing.buttonRadius) {
+                TextField("", text: $modeName)
+                    .font(CTRLFonts.bodyFont)
+                    .foregroundColor(CTRLColors.textPrimary)
+                    .ctrlPlaceholder(when: modeName.isEmpty) {
+                        Text("mode name")
+                            .font(CTRLFonts.bodyFont)
+                            .foregroundColor(CTRLColors.textTertiary)
+                    }
+            }
+        }
+    }
+
+    // MARK: - Apps Section
+
+    private var appsSection: some View {
+        VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
+            CTRLSectionHeader(title: "Apps in Scope")
+
+            Button(action: { showAppPicker = true }) {
+                SurfaceCard(padding: CTRLSpacing.md, cornerRadius: CTRLSpacing.buttonRadius) {
+                    HStack {
+                        Text(appCount > 0 ? "\(appCount) app\(appCount == 1 ? "" : "s") selected" : "select apps")
+                            .font(CTRLFonts.bodyFont)
+                            .foregroundColor(appCount > 0 ? CTRLColors.textPrimary : CTRLColors.textTertiary)
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(CTRLColors.textTertiary)
+                    }
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
     private var appCount: Int {
         appSelection.applicationTokens.count + appSelection.categoryTokens.count
     }
 
+    // MARK: - Actions
+
     private func saveMode() {
         let trimmed = modeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        // Check for duplicate names
         let nameChanged = trimmed.lowercased() != mode.name.lowercased()
         let isDuplicate = nameChanged && appState.modes.contains { $0.name.lowercased() == trimmed.lowercased() }
 
@@ -117,6 +144,22 @@ struct EditModeView: View {
             appState.saveSelectedApps(appSelection)
         }
 
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         dismiss()
+    }
+}
+
+// MARK: - Placeholder Extension
+
+extension View {
+    func ctrlPlaceholder<Content: View>(
+        when shouldShow: Bool,
+        alignment: Alignment = .leading,
+        @ViewBuilder placeholder: () -> Content
+    ) -> some View {
+        ZStack(alignment: alignment) {
+            placeholder().opacity(shouldShow ? 1 : 0)
+            self
+        }
     }
 }
