@@ -24,6 +24,8 @@ class AppState: ObservableObject {
         static let focusHistory = "ctrl_focus_history"
         static let blockingStartDate = "ctrl_blocking_start_date"
         static let strictMode = "ctrl_strict_mode"
+        static let hasCompletedOnboarding = "ctrl_has_completed_onboarding"
+        static let userEmail = "ctrl_user_email"
     }
 
     // MARK: - Persistence
@@ -44,6 +46,8 @@ class AppState: ObservableObject {
     @Published var totalBlockedSeconds: TimeInterval = 0
     @Published var focusHistory: [DailyFocusEntry] = []
     @Published var strictModeEnabled: Bool = false
+    @Published var hasCompletedOnboarding: Bool = false
+    @Published var userEmail: String? = nil
     var lastEmergencyResetDate: Date?
     var blockingStartDate: Date? = nil
     var focusDate: Date? = nil
@@ -51,10 +55,6 @@ class AppState: ObservableObject {
     static let maxModes = 6
 
     // MARK: - Computed Properties
-
-    var hasCompletedOnboarding: Bool {
-        return isPaired
-    }
 
     var activeMode: BlockingMode? {
         guard let id = activeModeId else { return nil }
@@ -112,6 +112,8 @@ class AppState: ObservableObject {
     func loadState() {
         isPaired = defaults.bool(forKey: Keys.isPaired)
         pairedTokenID = defaults.string(forKey: Keys.pairedTokenID)
+        hasCompletedOnboarding = defaults.bool(forKey: Keys.hasCompletedOnboarding)
+        userEmail = defaults.string(forKey: Keys.userEmail)
         // isBlocking is NOT persisted — always starts as false on launch
         // Clean up any stale value from previous versions
         defaults.removeObject(forKey: Keys.isBlocking)
@@ -173,7 +175,18 @@ class AppState: ObservableObject {
         checkAndResetDailyFocusTime()
         checkAndResetMonthlyAllowance()
 
-        print("[AppState] loadState — isPaired: \(isPaired), tokenID: \(pairedTokenID ?? "nil"), modes: \(modes.count), activeModeId: \(activeModeId?.uuidString ?? "nil"), emergencyUnlocks: \(emergencyUnlocksRemaining)")
+        // DEBUG: Add sample data for testing (remove before production)
+        if focusHistory.isEmpty {
+            print("[AppState] No focus history found, adding sample data...")
+            addSampleFocusHistory()
+        } else {
+            print("[AppState] Loaded focus history: \(focusHistory.count) entries")
+            for entry in focusHistory.prefix(5) {
+                print("  - \(entry.date): \(Int(entry.totalSeconds / 60)) minutes")
+            }
+        }
+
+        print("[AppState] loadState — isPaired: \(isPaired), tokenID: \(pairedTokenID ?? "nil"), email: \(userEmail ?? "nil"), onboarded: \(hasCompletedOnboarding), modes: \(modes.count), activeModeId: \(activeModeId?.uuidString ?? "nil"), emergencyUnlocks: \(emergencyUnlocksRemaining)")
     }
 
     func saveState() {
@@ -208,6 +221,8 @@ class AppState: ObservableObject {
             defaults.removeObject(forKey: Keys.blockingStartDate)
         }
         defaults.set(strictModeEnabled, forKey: Keys.strictMode)
+        defaults.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding)
+        defaults.set(userEmail, forKey: Keys.userEmail)
 
         defaults.synchronize()
         print("[AppState] saveState — isPaired: \(isPaired), tokenID: \(pairedTokenID ?? "nil"), modes: \(modes.count), activeMode: \(activeMode?.name ?? "nil")")
@@ -428,5 +443,57 @@ class AppState: ObservableObject {
     func unpairToken() {
         pairedTokenID = nil
         isPaired = false
+    }
+
+    // MARK: - Onboarding
+
+    func markOnboardingComplete() {
+        hasCompletedOnboarding = true
+        saveState()
+        print("[AppState] Onboarding marked complete")
+    }
+
+    // MARK: - Sample Data (DEBUG — remove before production)
+
+    private func addSampleFocusHistory() {
+        let calendar = Calendar.current
+        let today = Date()
+
+        // Sample hours for each day going back 28 days
+        // index 0 = today (will combine with live data), 1 = yesterday, etc.
+        let sampleHours: [Double] = [
+            // This week
+            0, 0.5, 1.8, 0, 3.2, 2.5, 0,
+            // Last week
+            1.5, 2.0, 0, 4.5, 3.0, 1.2, 0,
+            // 2 weeks ago
+            2.8, 0, 1.5, 2.2, 0, 3.8, 1.0,
+            // 3 weeks ago
+            0, 5.2, 2.1, 0, 1.8, 2.5, 0.8
+        ]
+
+        var history: [DailyFocusEntry] = []
+
+        for (index, hours) in sampleHours.enumerated() {
+            guard hours > 0 else { continue }
+
+            if let date = calendar.date(byAdding: .day, value: -index, to: today) {
+                let dateKey = DailyFocusEntry.dateFormatter.string(from: date)
+                let seconds = hours * 3600
+                history.append(DailyFocusEntry(date: dateKey, totalSeconds: seconds))
+                print("[AppState] Added sample: \(dateKey) = \(hours)h")
+            }
+        }
+
+        focusHistory = history
+        saveState()
+        print("[AppState] Sample focus history saved: \(history.count) entries")
+    }
+
+    /// DEBUG: Call this to force-refresh sample data (remove before production)
+    func resetAndAddSampleData() {
+        defaults.removeObject(forKey: Keys.focusHistory)
+        focusHistory = []
+        addSampleFocusHistory()
     }
 }

@@ -60,34 +60,27 @@ struct ModeCard: View {
             HStack(spacing: 0) {
                 // Bronze indicator bar (only when selected)
                 Rectangle()
-                    .fill(isSelected ? CTRLColors.accent : Color.clear)
+                    .fill(isSelected ? CTRLColors.accent.opacity(0.7) : Color.clear)
                     .frame(width: 3)
                     .cornerRadius(1.5)
 
                 // Content
-                VStack(alignment: .leading, spacing: CTRLSpacing.xs) {
-                    Text(mode.name.lowercased())
-                        .font(CTRLFonts.bodyFont)
-                        .fontWeight(isSelected ? .medium : .regular)
-                        .foregroundColor(isSelected ? CTRLColors.textPrimary : CTRLColors.textSecondary)
-
-                    Text(modeDescription(for: mode.name))
-                        .font(CTRLFonts.bodySmall)
-                        .foregroundColor(CTRLColors.textTertiary)
-                        .lineLimit(1)
-                }
-                .padding(.leading, CTRLSpacing.md)
+                Text(mode.name.lowercased())
+                    .font(CTRLFonts.bodyFont)
+                    .fontWeight(isSelected ? .medium : .regular)
+                    .foregroundColor(isSelected ? CTRLColors.textPrimary : CTRLColors.textSecondary)
+                    .padding(.leading, CTRLSpacing.md)
 
                 Spacer()
 
                 // App count
-                Text("\(mode.appCount) APPS")
+                Text("\(mode.appCount) \(mode.appCount == 1 ? "APP" : "APPS")")
                     .font(CTRLFonts.captionFont)
                     .tracking(1)
                     .foregroundColor(CTRLColors.textTertiary)
                     .padding(.trailing, CTRLSpacing.md)
             }
-            .frame(height: 72)
+            .frame(height: 56)
             .background(
                 RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
                     .fill(isSelected ? CTRLColors.surface2 : CTRLColors.surface2.opacity(0.5))
@@ -96,20 +89,6 @@ struct ModeCard: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    private func modeDescription(for name: String) -> String {
-        switch name.lowercased() {
-        case "work":
-            return "deep focus for tasks"
-        case "study":
-            return "learning and research"
-        case "sleep":
-            return "wind down before rest"
-        case "focus":
-            return "general focus session"
-        default:
-            return "custom focus mode"
-        }
-    }
 }
 
 // MARK: - Preview

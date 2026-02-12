@@ -14,14 +14,17 @@
 		A1000001233400030 /* NFCManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233400031 /* NFCManager.swift */; };
 		A1000001233400040 /* BlockingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233400041 /* BlockingManager.swift */; };
 		A1000001233400050 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233400051 /* AppState.swift */; };
-		E5000001000000001 /* BlockingMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5000001000000002 /* BlockingMode.swift */; };
 		B2000001000000001 /* ShieldConfigurationExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001000000002 /* ShieldConfigurationExtension.swift */; };
 		B2000001000000010 /* CTRLShield.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B2000001000000003 /* CTRLShield.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B4A3637B11A9A720F05A7A06 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = E947189F9E80DD127F0F0C60 /* Config.plist */; };
 		C3000001000000001 /* CTRLTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3000001000000002 /* CTRLTheme.swift */; };
+		C307C14EAE4F725FE4C459C0 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = DCDE60D590262708572F9D7E /* Supabase */; };
 		D4000001000000001 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000002 /* OnboardingView.swift */; };
 		D4000001000000003 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000004 /* HomeView.swift */; };
 		D4000001000000005 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000006 /* SettingsView.swift */; };
 		D4000001000000007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000008 /* RootView.swift */; };
+		E5000001000000001 /* BlockingMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5000001000000002 /* BlockingMode.swift */; };
+		EB12DCCA71CE0282B8C35E5B /* SupabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F2FEB222526B08199D66FBD /* SupabaseManager.swift */; };
 		F6000001000000001 /* EditModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6000001000000002 /* EditModeView.swift */; };
 		G7000001000000001 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G7000001000000002 /* StatsView.swift */; };
 		H8000001000000001 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H8000001000000002 /* MainTabView.swift */; };
@@ -54,6 +57,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		1F2FEB222526B08199D66FBD /* SupabaseManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SupabaseManager.swift; path = SupabaseManager.swift; sourceTree = "<group>"; };
 		A1000001233400002 /* CTRLApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CTRLApp.swift; sourceTree = "<group>"; };
 		A1000001233400004 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A1000001233400006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -64,7 +68,6 @@
 		A1000001233400031 /* NFCManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NFCManager.swift; sourceTree = "<group>"; };
 		A1000001233400041 /* BlockingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockingManager.swift; sourceTree = "<group>"; };
 		A1000001233400051 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
-		E5000001000000002 /* BlockingMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockingMode.swift; sourceTree = "<group>"; };
 		B2000001000000002 /* ShieldConfigurationExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShieldConfigurationExtension.swift; sourceTree = "<group>"; };
 		B2000001000000003 /* CTRLShield.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CTRLShield.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2000001000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -74,6 +77,8 @@
 		D4000001000000004 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		D4000001000000006 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D4000001000000008 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		E5000001000000002 /* BlockingMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockingMode.swift; sourceTree = "<group>"; };
+		E947189F9E80DD127F0F0C60 /* Config.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = Config.plist; path = Config.plist; sourceTree = "<group>"; };
 		F6000001000000002 /* EditModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditModeView.swift; sourceTree = "<group>"; };
 		G7000001000000002 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
 		H8000001000000002 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
@@ -86,6 +91,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C307C14EAE4F725FE4C459C0 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -99,6 +105,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		02953140AE0442AE62B6C5D4 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				E947189F9E80DD127F0F0C60 /* Config.plist */,
+			);
+			name = Config;
+			path = Config;
+			sourceTree = "<group>";
+		};
 		A1000001233400013 = {
 			isa = PBXGroup;
 			children = (
@@ -121,6 +136,7 @@
 				A1000001233400010 /* Info.plist */,
 				A1000001233400011 /* CTRL.entitlements */,
 				A1000001233400017 /* Preview Content */,
+				02953140AE0442AE62B6C5D4 /* Config */,
 			);
 			path = CTRL;
 			sourceTree = "<group>";
@@ -139,8 +155,17 @@
 			children = (
 				A1000001233400031 /* NFCManager.swift */,
 				A1000001233400041 /* BlockingManager.swift */,
+				1F2FEB222526B08199D66FBD /* SupabaseManager.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		A1000001233400017 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				A1000001233400008 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
 			sourceTree = "<group>";
 		};
 		A1000001233400060 /* Models */ = {
@@ -152,28 +177,14 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
-		A1000001233400017 /* Preview Content */ = {
+		B2000001000000060 /* CTRLShield */ = {
 			isa = PBXGroup;
 			children = (
-				A1000001233400008 /* Preview Assets.xcassets */,
+				B2000001000000002 /* ShieldConfigurationExtension.swift */,
+				B2000001000000004 /* Info.plist */,
+				B2000001000000005 /* CTRLShield.entitlements */,
 			);
-			path = "Preview Content";
-			sourceTree = "<group>";
-		};
-		D4000001000000010 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				D4000001000000002 /* OnboardingView.swift */,
-				D4000001000000004 /* HomeView.swift */,
-				D4000001000000006 /* SettingsView.swift */,
-				D4000001000000008 /* RootView.swift */,
-			F6000001000000002 /* EditModeView.swift */,
-			G7000001000000002 /* StatsView.swift */,
-			H8000001000000002 /* MainTabView.swift */,
-			I9000001000000002 /* ActivityView.swift */,
-		J1000001000000002 /* ModeSelectionSheet.swift */,
-			);
-			path = Views;
+			path = CTRLShield;
 			sourceTree = "<group>";
 		};
 		C3000001000000010 /* Theme */ = {
@@ -184,14 +195,20 @@
 			path = Theme;
 			sourceTree = "<group>";
 		};
-		B2000001000000060 /* CTRLShield */ = {
+		D4000001000000010 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				B2000001000000002 /* ShieldConfigurationExtension.swift */,
-				B2000001000000004 /* Info.plist */,
-				B2000001000000005 /* CTRLShield.entitlements */,
+				D4000001000000002 /* OnboardingView.swift */,
+				D4000001000000004 /* HomeView.swift */,
+				D4000001000000006 /* SettingsView.swift */,
+				D4000001000000008 /* RootView.swift */,
+				F6000001000000002 /* EditModeView.swift */,
+				G7000001000000002 /* StatsView.swift */,
+				H8000001000000002 /* MainTabView.swift */,
+				I9000001000000002 /* ActivityView.swift */,
+				J1000001000000002 /* ModeSelectionSheet.swift */,
 			);
-			path = CTRLShield;
+			path = Views;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -212,6 +229,9 @@
 				B2000001000000070 /* PBXTargetDependency */,
 			);
 			name = CTRL;
+			packageProductDependencies = (
+				DCDE60D590262708572F9D7E /* Supabase */,
+			);
 			productName = CTRL;
 			productReference = A1000001233400009 /* CTRL.app */;
 			productType = "com.apple.product-type.application";
@@ -260,6 +280,9 @@
 				Base,
 			);
 			mainGroup = A1000001233400013;
+			packageReferences = (
+				354483DEE77C7A6B72E704C7 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			productRefGroup = A1000001233400015 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -277,6 +300,7 @@
 			files = (
 				A1000001233400007 /* Preview Assets.xcassets in Resources */,
 				A1000001233400005 /* Assets.xcassets in Resources */,
+				B4A3637B11A9A720F05A7A06 /* Config.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -310,6 +334,7 @@
 				H8000001000000001 /* MainTabView.swift in Sources */,
 				I9000001000000001 /* ActivityView.swift in Sources */,
 				J1000001000000001 /* ModeSelectionSheet.swift in Sources */,
+				EB12DCCA71CE0282B8C35E5B /* SupabaseManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -596,6 +621,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		354483DEE77C7A6B72E704C7 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase-community/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DCDE60D590262708572F9D7E /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 354483DEE77C7A6B72E704C7 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A1000001233400022 /* Project object */;
 }

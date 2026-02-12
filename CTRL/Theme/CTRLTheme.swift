@@ -14,12 +14,13 @@ struct CTRLColors {
     // Text
     static let textPrimary = Color(hex: "E8E0D8")          // Warm white
     static let textSecondary = Color(hex: "A89F94")        // Muted warm gray
-    static let textTertiary = Color(hex: "6F675E")         // Subtle hints
+    static let textTertiary = Color(hex: "7A726A")         // Subtle hints
 
     // Accent - Bronze (use sparingly)
     static let accent = Color(hex: "A68A64")               // Muted bronze
     static let accentHover = Color(hex: "B8965E")          // Hover/pressed
     static let accentGlow = Color(hex: "A68A64").opacity(0.10)  // Subtle glow
+    static let accentMuted = Color(hex: "8A7A5A")            // Desaturated bronze
 
     // Semantic
     static let destructive = Color(hex: "8B5A5A")          // Muted rose
@@ -75,9 +76,21 @@ extension Color {
 // MARK: - Typography System
 
 struct CTRLFonts {
-    // Display - Ritual states ONLY (Serif)
-    // Used for: "unlocked", "in session" on Home
-    static let display = Font.custom("Georgia", size: 44).weight(.regular)
+    // MARK: Ritual Typography (Georgia serif — used sparingly)
+
+    // Ritual Whisper — "ctrl" wordmark (quiet, ever-present)
+    static let ritualWhisper = Font.custom("Georgia", size: 18)
+
+    // Ritual State — "unlocked" / "in session" (the sacred center)
+    static let ritualState = Font.custom("Georgia", size: 42)
+
+    // Ritual Section — "this week" / "settings" (editorial headers)
+    static let ritualSection = Font.custom("Georgia", size: 26)
+
+    // MARK: System Typography
+
+    // Display - Legacy alias for ritualState
+    static let display = ritualState
 
     // Timer - Session time (Monospace)
     static let timer = Font.system(size: 40, weight: .medium, design: .monospaced)
@@ -225,18 +238,19 @@ struct CTRLSecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(CTRLFonts.bodyFont)
             .fontWeight(.medium)
-            .foregroundColor(CTRLColors.textPrimary)
+            .foregroundColor(accentBorder ? CTRLColors.accent : CTRLColors.textPrimary)
             .frame(maxWidth: .infinity)
             .frame(height: CTRLSpacing.buttonHeight)
             .background(
                 RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
-                    .fill(CTRLColors.surface1)
+                    .fill(accentBorder ? CTRLColors.surface2 : CTRLColors.surface1)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
-                    .stroke(accentBorder ? CTRLColors.accent : CTRLColors.border, lineWidth: 1)
+                    .stroke(accentBorder ? CTRLColors.accentMuted.opacity(0.6) : CTRLColors.border, lineWidth: accentBorder ? 1.5 : 1)
             )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }

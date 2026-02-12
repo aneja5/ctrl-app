@@ -10,6 +10,9 @@ struct HomeView: View {
     @State private var showModeSheet = false
     @State private var showActivity = false
     @State private var showSettings = false
+    @State private var ritualGlowPulse: CGFloat = 0
+    @State private var timerScale: CGFloat = 1.0
+    @State private var timerOpacity: Double = 1.0
 
     private var isInSession: Bool {
         blockingManager.isBlocking
@@ -17,47 +20,76 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
-            // Background — warm charcoal
+            // Base background
             CTRLColors.base.ignoresSafeArea()
 
             // Bronze glow when in session
             if isInSession {
                 BronzeGlow()
-                    .offset(y: -80)
-                    .opacity(0.6)
-                    .transition(.opacity)
+                    .offset(y: -60)
+                    .transition(.opacity.animation(.easeOut(duration: 0.4)))
             }
 
+            // Ritual glow pulse (fires on lock-in)
+            Circle()
+                .fill(
+                    RadialGradient(
+                        gradient: Gradient(colors: [
+                            CTRLColors.accent.opacity(0.25),
+                            CTRLColors.accent.opacity(0.08),
+                            Color.clear
+                        ]),
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 220
+                    )
+                )
+                .frame(width: 440, height: 440)
+                .scaleEffect(ritualGlowPulse)
+                .opacity(Double(ritualGlowPulse) > 0 ? Double(1.2 - ritualGlowPulse) : 0)
+                .blur(radius: 30)
+                .allowsHitTesting(false)
+
             VStack(spacing: 0) {
+                // Wordmark at top
+                Text("ctrl")
+                    .font(CTRLFonts.ritualWhisper)
+                    .foregroundColor(CTRLColors.textTertiary)
+                    .tracking(3)
+                    .padding(.top, CTRLSpacing.xl)
+
                 Spacer()
 
-                // Ritual State Display
+                // State Display (Ritual Center)
                 stateDisplay
 
                 Spacer()
 
-                // Today Stats (only when unlocked)
+                // Mode Selector (above Lock In)
                 if !isInSession {
-                    todayStats
+                    modeSelector
                         .padding(.bottom, CTRLSpacing.lg)
                 }
 
-                // Primary CTA
+                // Primary Action
                 primaryAction
-                    .padding(.horizontal, CTRLSpacing.screenPadding * 2)
+                    .padding(.horizontal, CTRLSpacing.screenPadding + 20)
 
-                // Mode Selector Pill
-                modeSelector
-                    .padding(.top, CTRLSpacing.md)
+                // Breathing dot when in session
+                if isInSession {
+                    BreathingDot()
+                        .padding(.top, CTRLSpacing.xl)
+                }
 
                 Spacer()
-                    .frame(height: 60)
+                    .frame(height: CTRLSpacing.xxl)
 
                 // Floating Dock
                 floatingDock
                     .padding(.horizontal, CTRLSpacing.screenPadding)
                     .padding(.bottom, CTRLSpacing.md)
             }
+
         }
         .alert("Wrong Token", isPresented: $showWrongTokenAlert) {
             Button("OK", role: .cancel) {}
@@ -90,6 +122,7 @@ struct HomeView: View {
             SettingsView()
                 .environmentObject(appState)
                 .environmentObject(blockingManager)
+                .environmentObject(nfcManager)
                 .presentationBackground(CTRLColors.base)
         }
     }
@@ -100,23 +133,25 @@ struct HomeView: View {
         VStack(spacing: CTRLSpacing.md) {
             if isInSession {
                 // In Session — serif ritual state
-                BreathingDot()
-                    .padding(.bottom, CTRLSpacing.xs)
-
                 Text("in session")
                     .font(CTRLFonts.display)
                     .tracking(2)
                     .foregroundColor(CTRLColors.accent)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
 
                 Text(formatSessionTime())
                     .font(CTRLFonts.timer)
                     .foregroundColor(CTRLColors.textPrimary)
                     .monospacedDigit()
+                    .padding(.top, CTRLSpacing.xs)
+                    .scaleEffect(timerScale)
+                    .opacity(timerOpacity)
 
                 Text(appState.activeMode?.name.lowercased() ?? "focus")
-                    .font(CTRLFonts.captionFont)
-                    .tracking(2)
+                    .font(CTRLFonts.bodySmall)
                     .foregroundColor(CTRLColors.textTertiary)
+                    .padding(.top, CTRLSpacing.micro)
+                    .opacity(timerOpacity)
 
             } else {
                 // Unlocked — serif ritual state
@@ -124,37 +159,17 @@ struct HomeView: View {
                     .font(CTRLFonts.display)
                     .tracking(2)
                     .foregroundColor(CTRLColors.textPrimary)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
 
-                Text(scopeDescription)
+                // Mode name under unlocked
+                Text(appState.activeMode?.name.lowercased() ?? "focus")
                     .font(CTRLFonts.captionFont)
                     .tracking(1)
                     .foregroundColor(CTRLColors.textTertiary)
-                    .padding(.top, CTRLSpacing.micro)
+                    .padding(.top, CTRLSpacing.xs)
             }
         }
-        .animation(.easeOut(duration: 0.3), value: isInSession)
-    }
-
-    private var scopeDescription: String {
-        let count = appState.activeMode?.appCount ?? 0
-        return "\(count) app\(count == 1 ? "" : "s") in scope"
-    }
-
-    // MARK: - Today Stats
-
-    private var todayStats: some View {
-        HStack(spacing: CTRLSpacing.lg) {
-            VStack(spacing: 4) {
-                Text(formatTodayTime())
-                    .font(CTRLFonts.bodyFont)
-                    .foregroundColor(CTRLColors.textSecondary)
-                    .monospacedDigit()
-
-                Text("today")
-                    .font(CTRLFonts.micro)
-                    .foregroundColor(CTRLColors.textTertiary)
-            }
-        }
+        .animation(.easeInOut(duration: 0.4), value: isInSession)
     }
 
     // MARK: - Primary Action
@@ -176,90 +191,74 @@ struct HomeView: View {
         .disabled(!nfcManager.isAvailable || nfcManager.isScanning)
     }
 
-    // MARK: - Mode Selector Pill
+    // MARK: - Mode Selector (below Lock In)
 
     private var modeSelector: some View {
-        Button(action: {
-            if !isInSession {
-                showModeSheet = true
-            }
-        }) {
+        Button(action: { showModeSheet = true }) {
             HStack(spacing: CTRLSpacing.xs) {
-                Text(appState.activeMode?.name.lowercased() ?? "select mode")
-                    .font(CTRLFonts.captionFont)
+                Text(appState.activeMode?.name ?? "Select")
+                    .font(CTRLFonts.bodySmall)
                     .foregroundColor(CTRLColors.textSecondary)
 
-                if !isInSession {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(CTRLColors.textTertiary)
-                }
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(CTRLColors.textTertiary)
             }
             .padding(.horizontal, CTRLSpacing.md)
-            .padding(.vertical, CTRLSpacing.xs)
+            .padding(.vertical, CTRLSpacing.sm)
             .background(
                 Capsule()
                     .fill(CTRLColors.surface1)
             )
         }
-        .buttonStyle(CTRLGhostButtonStyle())
-        .disabled(isInSession)
-        .opacity(isInSession ? 0.3 : 1.0)
+        .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - Floating Dock
+    // MARK: - Floating Dock (with today's time)
 
     private var floatingDock: some View {
-        SurfaceCard(padding: CTRLSpacing.md, cornerRadius: 28, elevation: 1) {
-            HStack(spacing: CTRLSpacing.md) {
-                // Activity Button
-                Button(action: { showActivity = true }) {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundColor(CTRLColors.textTertiary)
-                        .frame(width: 32, height: 32)
-                }
+        HStack {
+            // Activity Button
+            Button(action: { showActivity = true }) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(CTRLColors.textTertiary)
+                    .frame(width: 44, height: 44)
+            }
 
-                Spacer()
+            Spacer()
 
-                // Dock Status
-                HStack(spacing: CTRLSpacing.xs) {
-                    Circle()
-                        .fill(isInSession ? CTRLColors.accent : CTRLColors.textTertiary)
-                        .frame(width: 6, height: 6)
+            // Center: Always show today's total time
+            VStack(spacing: 2) {
+                Text(formatTodayTime())
+                    .font(CTRLFonts.captionFont)
+                    .foregroundColor(CTRLColors.textSecondary)
+                    .monospacedDigit()
 
-                    if isInSession {
-                        Text(formatSessionTime())
-                            .font(CTRLFonts.captionFont)
-                            .foregroundColor(CTRLColors.textPrimary)
-                            .monospacedDigit()
+                Text("today")
+                    .font(CTRLFonts.micro)
+                    .foregroundColor(CTRLColors.textTertiary)
+            }
 
-                        Text("session")
-                            .font(CTRLFonts.micro)
-                            .foregroundColor(CTRLColors.textTertiary)
-                    } else {
-                        Text(formatTodayTime())
-                            .font(CTRLFonts.captionFont)
-                            .foregroundColor(CTRLColors.textSecondary)
-                            .monospacedDigit()
+            Spacer()
 
-                        Text("today")
-                            .font(CTRLFonts.micro)
-                            .foregroundColor(CTRLColors.textTertiary)
-                    }
-                }
-
-                Spacer()
-
-                // Settings Button
-                Button(action: { showSettings = true }) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundColor(CTRLColors.textTertiary)
-                        .frame(width: 32, height: 32)
-                }
+            // Settings Button
+            Button(action: { showSettings = true }) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(CTRLColors.textTertiary)
+                    .frame(width: 44, height: 44)
             }
         }
+        .padding(CTRLSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: 28)
+                .fill(CTRLColors.surface1.opacity(0.7))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28)
+                .stroke(CTRLColors.border.opacity(0.3), lineWidth: 0.5)
+        )
     }
 
     // MARK: - Helpers
@@ -296,8 +295,12 @@ struct HomeView: View {
     // MARK: - Actions
 
     private func triggerNFCScan() {
-        let feedback = UIImpactFeedbackGenerator(style: isInSession ? .light : .medium)
-        feedback.prepare()
+        let mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
+        let lightHaptic = UIImpactFeedbackGenerator(style: .light)
+        mediumHaptic.prepare()
+        lightHaptic.prepare()
+
+        let wasInSession = isInSession
 
         nfcManager.scan { result in
             switch result {
@@ -310,9 +313,28 @@ struct HomeView: View {
                     return
                 }
 
-                feedback.impactOccurred()
+                // -- Haptic: medium thud (the "seal") --
+                mediumHaptic.impactOccurred()
 
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                // Prepare timer entrance state before toggling (lock-in only)
+                if !wasInSession {
+                    timerScale = 0.95
+                    timerOpacity = 0
+                }
+
+                // -- Bronze glow pulse radiates from center (lock-in only) --
+                if !wasInSession {
+                    ritualGlowPulse = 0.3
+                    withAnimation(.easeOut(duration: 0.6)) {
+                        ritualGlowPulse = 1.2
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                        ritualGlowPulse = 0
+                    }
+                }
+
+                // -- Cross-fade state (400ms ease) --
+                withAnimation(.easeInOut(duration: 0.4)) {
                     let wasBlocking = blockingManager.isBlocking
                     if let mode = appState.activeMode {
                         blockingManager.toggleBlocking(for: mode.appSelection, strictMode: appState.strictModeEnabled)
@@ -329,12 +351,17 @@ struct HomeView: View {
                     }
                 }
 
-                // Double haptic for end session
-                if !blockingManager.isBlocking {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        let light = UIImpactFeedbackGenerator(style: .light)
-                        light.impactOccurred()
+                // -- Timer fades in with scale 0.95 → 1.0 (lock-in only) --
+                if !wasInSession {
+                    withAnimation(.easeOut(duration: 0.5).delay(0.15)) {
+                        timerScale = 1.0
+                        timerOpacity = 1.0
                     }
+                }
+
+                // -- Light haptic 100ms after medium --
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    lightHaptic.impactOccurred()
                 }
 
             case .failure(let error):

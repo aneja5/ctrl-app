@@ -7,11 +7,7 @@ struct SettingsView: View {
     @StateObject private var nfcManager = NFCManager()
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showAddMode = false
-    @State private var newModeName = ""
     @State private var modeToEdit: BlockingMode? = nil
-    @State private var modeToDelete: BlockingMode? = nil
-    @State private var showDeleteConfirm = false
     @State private var showOverrideConfirm = false
     @State private var showUnpairConfirm = false
 
@@ -27,9 +23,6 @@ struct SettingsView: View {
 
                     // Modes Section
                     modesSection
-
-                    // Focus Rules Section
-                    focusRulesSection
 
                     // Override Section
                     overrideSection
@@ -49,30 +42,6 @@ struct SettingsView: View {
             EditModeView(mode: mode)
                 .environmentObject(appState)
                 .presentationBackground(CTRLColors.base)
-        }
-        .alert("New Mode", isPresented: $showAddMode) {
-            TextField("Mode name", text: $newModeName)
-            Button("Cancel", role: .cancel) { newModeName = "" }
-            Button("Add") {
-                let trimmed = newModeName.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty {
-                    if let newMode = appState.addMode(name: trimmed) {
-                        appState.setActiveMode(id: newMode.id)
-                    }
-                    newModeName = ""
-                }
-            }
-        }
-        .alert("Delete Mode", isPresented: $showDeleteConfirm) {
-            Button("Cancel", role: .cancel) { modeToDelete = nil }
-            Button("Delete", role: .destructive) {
-                if let mode = modeToDelete {
-                    appState.deleteMode(id: mode.id)
-                }
-                modeToDelete = nil
-            }
-        } message: {
-            Text("Delete \"\(modeToDelete?.name ?? "")\"?")
         }
         .alert("Override Session", isPresented: $showOverrideConfirm) {
             Button("Cancel", role: .cancel) { }
@@ -102,7 +71,7 @@ struct SettingsView: View {
     private var header: some View {
         HStack {
             Text("settings")
-                .font(CTRLFonts.h1)
+                .font(CTRLFonts.ritualSection)
                 .foregroundColor(CTRLColors.textPrimary)
 
             Spacer()
@@ -146,18 +115,25 @@ struct SettingsView: View {
         }
     }
 
+    private var isActiveModeLocked: Bool {
+        blockingManager.isBlocking
+    }
+
     private func modeRow(mode: BlockingMode) -> some View {
-        HStack(spacing: 0) {
+        let isActive = appState.activeModeId == mode.id
+        let editDisabled = isActive && isActiveModeLocked
+
+        return HStack(spacing: 0) {
             // Active Indicator
             Rectangle()
-                .fill(appState.activeModeId == mode.id ? CTRLColors.accent : Color.clear)
+                .fill(isActive ? CTRLColors.accent.opacity(0.7) : Color.clear)
                 .frame(width: 3)
 
             // Mode Info
             VStack(alignment: .leading, spacing: CTRLSpacing.micro) {
                 Text(mode.name.lowercased())
                     .font(CTRLFonts.bodyFont)
-                    .foregroundColor(appState.activeModeId == mode.id ? CTRLColors.textPrimary : CTRLColors.textSecondary)
+                    .foregroundColor(isActive ? CTRLColors.textPrimary : CTRLColors.textSecondary)
 
                 Text("\(mode.appCount) app\(mode.appCount == 1 ? "" : "s") in scope")
                     .font(CTRLFonts.micro)
@@ -167,12 +143,13 @@ struct SettingsView: View {
 
             Spacer()
 
-            // Edit Button
+            // Edit Button (disabled for active mode during session)
             Button(action: { modeToEdit = mode }) {
                 Image(systemName: "pencil")
                     .font(.system(size: 14))
-                    .foregroundColor(CTRLColors.textTertiary)
+                    .foregroundColor(editDisabled ? CTRLColors.textTertiary.opacity(0.3) : CTRLColors.textTertiary)
             }
+            .disabled(editDisabled)
             .padding(.trailing, CTRLSpacing.md)
         }
         .frame(height: 68)
@@ -183,20 +160,14 @@ struct SettingsView: View {
                 appState.setActiveMode(id: mode.id)
             }
         }
-        .contextMenu {
-            if appState.modes.count > 1 {
-                Button(role: .destructive) {
-                    modeToDelete = mode
-                    showDeleteConfirm = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-            }
-        }
     }
 
     private var addModeRow: some View {
-        Button(action: { showAddMode = true }) {
+        Button(action: {
+            if let newMode = appState.addMode(name: "New Mode") {
+                modeToEdit = newMode
+            }
+        }) {
             HStack(spacing: 0) {
                 Rectangle()
                     .fill(Color.clear)
@@ -215,39 +186,6 @@ struct SettingsView: View {
                 Spacer()
             }
             .frame(height: 56)
-        }
-    }
-
-    // MARK: - Focus Rules Section
-
-    private var focusRulesSection: some View {
-        VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
-            CTRLSectionHeader(title: "Focus Rules")
-
-            SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.cardRadius) {
-                VStack(alignment: .leading, spacing: CTRLSpacing.xs) {
-                    HStack {
-                        Text("strict mode")
-                            .font(CTRLFonts.bodyFont)
-                            .foregroundColor(CTRLColors.textPrimary)
-
-                        Spacer()
-
-                        Toggle("", isOn: $appState.strictModeEnabled)
-                            .tint(CTRLColors.accent)
-                            .scaleEffect(0.85)
-                            .disabled(blockingManager.isBlocking)
-                    }
-
-                    Text("disable override when active")
-                        .font(CTRLFonts.bodySmall)
-                        .foregroundColor(CTRLColors.textTertiary)
-                }
-            }
-            .opacity(blockingManager.isBlocking ? 0.5 : 1.0)
-            .onChange(of: appState.strictModeEnabled) {
-                appState.saveState()
-            }
         }
     }
 

@@ -13,7 +13,7 @@ struct ActivityView: View {
             CTRLColors.base.ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: CTRLSpacing.xl) {
+                VStack(spacing: CTRLSpacing.lg) {
                     // Header
                     header
                         .padding(.top, CTRLSpacing.md)
@@ -21,17 +21,20 @@ struct ActivityView: View {
                     // Hero Metric
                     heroMetric
 
-                    // Line Chart
-                    lineChart
+                    // Bar Chart
+                    barChart
+                        .padding(.top, CTRLSpacing.md)
+                        .padding(.bottom, CTRLSpacing.sm)
 
-                    // Stats Grid
-                    statsGrid
-
-                    // Week Navigation
+                    // Week Navigation (above stats)
                     weekNavigation
                         .padding(.top, CTRLSpacing.sm)
 
-                    Spacer(minLength: 60)
+                    // Stats Grid
+                    statsGrid
+                        .padding(.top, CTRLSpacing.sm)
+
+                    Spacer(minLength: 20)
                 }
                 .padding(.horizontal, CTRLSpacing.screenPadding)
             }
@@ -43,7 +46,7 @@ struct ActivityView: View {
     private var header: some View {
         HStack {
             Text(weekLabel.lowercased())
-                .font(CTRLFonts.h1)
+                .font(CTRLFonts.ritualSection)
                 .foregroundColor(CTRLColors.textPrimary)
 
             Spacer()
@@ -74,14 +77,14 @@ struct ActivityView: View {
     private var heroMetric: some View {
         let totalSeconds = weekData.reduce(0) { $0 + $1.seconds }
 
-        return SurfaceCard(padding: CTRLSpacing.xl, cornerRadius: CTRLSpacing.cardRadius) {
-            VStack(spacing: CTRLSpacing.sm) {
+        return SurfaceCard(padding: CTRLSpacing.lg, cornerRadius: CTRLSpacing.cardRadius) {
+            VStack(spacing: CTRLSpacing.xs) {
                 Text(formatDuration(totalSeconds))
-                    .font(.system(size: 44, weight: .light, design: .default))
+                    .font(.system(size: 40, weight: .light, design: .default))
                     .foregroundColor(CTRLColors.textPrimary)
                     .monospacedDigit()
 
-                Text("TOTAL FOCUS")
+                Text("time reclaimed")
                     .font(CTRLFonts.captionFont)
                     .tracking(2)
                     .foregroundColor(CTRLColors.textTertiary)
@@ -90,79 +93,136 @@ struct ActivityView: View {
         }
     }
 
-    // MARK: - Line Chart
+    // MARK: - Bar Chart
 
-    private var lineChart: some View {
+    private var barChart: some View {
         let days = weekData
-        let maxSeconds = max(days.map { $0.seconds }.max() ?? 1, 60)
+        let maxSeconds = max(days.map { $0.seconds }.max() ?? 0, 60)
+        let yAxisMax = calculateYAxisMax(maxSeconds: maxSeconds)
+        let chartHeight: CGFloat = 200
 
-        return VStack(spacing: CTRLSpacing.md) {
-            // Chart
-            GeometryReader { geometry in
-                let width = geometry.size.width
-                let height: CGFloat = 120
-                let stepX = width / 6
+        return VStack(spacing: 4) {
+            // Chart area with Y-axis labels
+            HStack(alignment: .top, spacing: CTRLSpacing.xs) {
+                // Y-Axis Labels
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(formatYAxisLabel(seconds: yAxisMax))
+                        .font(CTRLFonts.micro)
+                        .foregroundColor(CTRLColors.textTertiary)
 
-                ZStack {
-                    // Grid lines (very subtle)
-                    ForEach(0..<4, id: \.self) { i in
-                        let y = height - (height * CGFloat(i) / 3)
-                        Path { path in
-                            path.move(to: CGPoint(x: 0, y: y))
-                            path.addLine(to: CGPoint(x: width, y: y))
-                        }
-                        .stroke(CTRLColors.border.opacity(0.5), lineWidth: 1)
+                    Spacer()
+
+                    Text(formatYAxisLabel(seconds: yAxisMax / 2))
+                        .font(CTRLFonts.micro)
+                        .foregroundColor(CTRLColors.textTertiary)
+
+                    Spacer()
+
+                    Text("0h")
+                        .font(CTRLFonts.micro)
+                        .foregroundColor(CTRLColors.textTertiary)
+                }
+                .frame(width: 28, height: chartHeight)
+
+                // Chart area
+                ZStack(alignment: .bottom) {
+                    // Grid lines (solid at 0, half, full; dotted at quarters)
+                    VStack(spacing: 0) {
+                        // Top solid line (max)
+                        Rectangle()
+                            .fill(CTRLColors.border.opacity(0.3))
+                            .frame(height: 1)
+
+                        Spacer()
+
+                        // 3/4 dotted line
+                        DottedLine()
+                            .stroke(CTRLColors.border.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            .frame(height: 1)
+
+                        Spacer()
+
+                        // Middle solid line (half)
+                        Rectangle()
+                            .fill(CTRLColors.border.opacity(0.3))
+                            .frame(height: 1)
+
+                        Spacer()
+
+                        // 1/4 dotted line
+                        DottedLine()
+                            .stroke(CTRLColors.border.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            .frame(height: 1)
+
+                        Spacer()
+
+                        // Bottom solid line (0)
+                        Rectangle()
+                            .fill(CTRLColors.border.opacity(0.3))
+                            .frame(height: 1)
                     }
+                    .frame(height: chartHeight)
 
-                    // Line path
-                    Path { path in
-                        for (index, day) in days.enumerated() {
-                            let x = CGFloat(index) * stepX
-                            let y = height - (CGFloat(day.seconds) / CGFloat(maxSeconds) * (height - 20)) - 10
-
-                            if index == 0 {
-                                path.move(to: CGPoint(x: x, y: y))
-                            } else {
-                                path.addLine(to: CGPoint(x: x, y: y))
-                            }
+                    // Bars
+                    HStack(alignment: .bottom, spacing: 16) {
+                        ForEach(days) { day in
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(day.isToday ? CTRLColors.accent : CTRLColors.accent.opacity(0.35))
+                                .frame(width: 28, height: barHeight(for: day.seconds, max: yAxisMax, chartHeight: chartHeight))
+                                .frame(maxWidth: .infinity)
                         }
-                    }
-                    .stroke(
-                        CTRLColors.accent,
-                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
-                    )
-
-                    // Dots
-                    ForEach(Array(days.enumerated()), id: \.offset) { index, day in
-                        let x = CGFloat(index) * stepX
-                        let y = height - (CGFloat(day.seconds) / CGFloat(maxSeconds) * (height - 20)) - 10
-
-                        Circle()
-                            .fill(day.isToday ? CTRLColors.accent : CTRLColors.surface2)
-                            .frame(width: day.isToday ? 10 : 6, height: day.isToday ? 10 : 6)
-                            .overlay(
-                                Circle()
-                                    .stroke(CTRLColors.accent, lineWidth: day.isToday ? 0 : 1.5)
-                            )
-                            .position(x: x, y: y)
                     }
                 }
+                .frame(height: chartHeight)
             }
-            .frame(height: 120)
-            .padding(.horizontal, CTRLSpacing.sm)
 
-            // Day Labels
-            HStack {
-                ForEach(weekData) { day in
-                    Text(day.day)
-                        .font(CTRLFonts.captionFont)
-                        .tracking(1)
-                        .foregroundColor(day.isToday ? CTRLColors.accent : CTRLColors.textTertiary)
-                        .frame(maxWidth: .infinity)
+            // Day Labels - closer to chart
+            HStack(spacing: 0) {
+                // Spacer for Y-axis width
+                Color.clear
+                    .frame(width: 28 + CTRLSpacing.xs)
+
+                // Day letters aligned with bars
+                HStack(spacing: 16) {
+                    ForEach(days) { day in
+                        Text(day.day)
+                            .font(CTRLFonts.captionFont)
+                            .tracking(1)
+                            .foregroundColor(day.isToday ? CTRLColors.accent : CTRLColors.textTertiary)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
             }
         }
-        .padding(.vertical, CTRLSpacing.sm)
+    }
+
+    // Calculate nice Y-axis maximum (whole hours only, always even so mid-label is whole)
+    private func calculateYAxisMax(maxSeconds: Int) -> Int {
+        let maxHours = Double(maxSeconds) / 3600.0
+
+        if maxHours <= 1   { return 3600 * 2 }     // 2h (0h, 1h, 2h)
+        if maxHours <= 2   { return 3600 * 4 }     // 4h (0h, 2h, 4h)
+        if maxHours <= 3   { return 3600 * 6 }     // 6h (0h, 3h, 6h)
+        if maxHours <= 4   { return 3600 * 8 }     // 8h (0h, 4h, 8h)
+        if maxHours <= 5   { return 3600 * 10 }    // 10h (0h, 5h, 10h)
+        if maxHours <= 6   { return 3600 * 12 }    // 12h (0h, 6h, 12h)
+        if maxHours <= 8   { return 3600 * 16 }    // 16h (0h, 8h, 16h)
+        if maxHours <= 10  { return 3600 * 20 }    // 20h (0h, 10h, 20h)
+
+        let roundedHours = Int(ceil(maxHours / 2.0) * 2)
+        return roundedHours * 3600
+    }
+
+    private func formatYAxisLabel(seconds: Int) -> String {
+        let hours = seconds / 3600
+        return "\(hours)h"
+    }
+
+    private func barHeight(for seconds: Int, max: Int, chartHeight: CGFloat) -> CGFloat {
+        guard max > 0 else { return 4 }
+        let minHeight: CGFloat = seconds > 0 ? 6 : 0
+        let ratio = CGFloat(seconds) / CGFloat(max)
+        return Swift.max(ratio * chartHeight, minHeight)
     }
 
     // MARK: - Stats Grid
@@ -174,8 +234,8 @@ struct ActivityView: View {
         let avgSeconds = activeDays > 0 ? totalSeconds / activeDays : 0
 
         return HStack(spacing: CTRLSpacing.sm) {
-            statCard(value: "\(activeDays)", label: "DAYS ACTIVE")
-            statCard(value: formatDuration(avgSeconds), label: "AVG / DAY")
+            statCard(value: "\(activeDays)", label: "consistency")
+            statCard(value: formatDuration(avgSeconds), label: "daily rhythm")
         }
     }
 
@@ -236,9 +296,17 @@ struct ActivityView: View {
         let calendar = Calendar.current
         let today = Date()
 
-        var startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
-        startOfWeek = calendar.date(byAdding: .weekOfYear, value: selectedWeekOffset, to: startOfWeek)!
-        let endOfWeek = calendar.date(byAdding: .day, value: 6, to: startOfWeek)!
+        // Get Monday of current week
+        var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
+        components.weekday = 2 // Monday
+        guard var startOfWeek = calendar.date(from: components) else { return "" }
+
+        // Adjust for offset
+        if let adjusted = calendar.date(byAdding: .weekOfYear, value: selectedWeekOffset, to: startOfWeek) {
+            startOfWeek = adjusted
+        }
+
+        guard let endOfWeek = calendar.date(byAdding: .day, value: 6, to: startOfWeek) else { return "" }
 
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
@@ -252,20 +320,30 @@ struct ActivityView: View {
         let calendar = Calendar.current
         let today = Date()
 
-        var startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
-        startOfWeek = calendar.date(byAdding: .weekOfYear, value: selectedWeekOffset, to: startOfWeek)!
+        // Get the start of the current week (Monday)
+        var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
+        components.weekday = 2 // Monday
+        guard var startOfCurrentWeek = calendar.date(from: components) else { return [] }
+
+        // Adjust for week offset
+        if let adjustedStart = calendar.date(byAdding: .weekOfYear, value: selectedWeekOffset, to: startOfCurrentWeek) {
+            startOfCurrentWeek = adjustedStart
+        }
 
         let dayLetters = ["M", "T", "W", "T", "F", "S", "S"]
 
         var days: [DayData] = []
 
         for i in 0..<7 {
-            let date = calendar.date(byAdding: .day, value: i, to: startOfWeek)!
+            guard let date = calendar.date(byAdding: .day, value: i, to: startOfCurrentWeek) else { continue }
+
             let dateKey = DailyFocusEntry.dateFormatter.string(from: date)
-            let seconds = appState.focusHistory.first { $0.date == dateKey }?.totalSeconds ?? 0
             let isToday = calendar.isDateInToday(date)
 
-            var totalSeconds = Int(seconds)
+            // Get seconds from history
+            var totalSeconds = Int(appState.focusHistory.first { $0.date == dateKey }?.totalSeconds ?? 0)
+
+            // Add live session time if today and current week
             if isToday && selectedWeekOffset == 0 {
                 totalSeconds = Int(appState.todayFocusSeconds + appState.currentSessionSeconds)
             }
@@ -296,5 +374,16 @@ struct ActivityView: View {
         } else {
             return "0m"
         }
+    }
+}
+
+// MARK: - Dotted Line Shape
+
+struct DottedLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.width, y: rect.midY))
+        return path
     }
 }
