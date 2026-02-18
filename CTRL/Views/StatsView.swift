@@ -30,11 +30,11 @@ struct StatsView: View {
                 }
                 .padding(.top, 16)
             }
-            .navigationTitle("Statistics")
+            .navigationTitle("statistics")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("done") { dismiss() }
                         .foregroundColor(CTRLColors.accent)
                 }
             }
@@ -123,7 +123,7 @@ struct StatsView: View {
         let totalSeconds = weekData.reduce(0) { $0 + $1.seconds }
 
         return VStack(spacing: 4) {
-            Text("Weekly Total")
+            Text("weekly total")
                 .font(.caption)
                 .foregroundColor(CTRLColors.textSecondary)
             Text(AppState.formatTime(Double(totalSeconds)))

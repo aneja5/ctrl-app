@@ -4,14 +4,17 @@ import FamilyControls
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var blockingManager: BlockingManager
-    @StateObject private var nfcManager = NFCManager()
     @Environment(\.dismiss) private var dismiss
 
-    @State private var modeToEdit: BlockingMode? = nil
+    @State private var showEditModeSheet = false
+    @State private var editingMode: BlockingMode? = nil
+    @State private var isAddingNewMode = false
     @State private var showOverrideConfirm = false
-    @State private var showUnpairConfirm = false
+    @State private var showSignOutAlert = false
+    @State private var expandedFAQ: String? = nil
 
     var body: some View {
+        NavigationStack {
         ZStack {
             CTRLColors.base.ignoresSafeArea()
 
@@ -21,31 +24,48 @@ struct SettingsView: View {
                     header
                         .padding(.top, CTRLSpacing.md)
 
-                    // Modes Section
+                    // Account
+                    accountSection
+
+                    // Modes
                     modesSection
 
-                    // Override Section
+                    // Override
                     overrideSection
 
-                    // Token Section
-                    tokenSection
+                    // FAQ
+                    faqSection
 
-                    // System Section
-                    systemSection
+                    // Support
+                    supportSection
 
-                    Spacer(minLength: 60)
+                    // Footer
+                    footerSection
+
+                    Spacer(minLength: 40)
                 }
                 .padding(.horizontal, CTRLSpacing.screenPadding)
             }
         }
-        .sheet(item: $modeToEdit) { mode in
-            EditModeView(mode: mode)
-                .environmentObject(appState)
-                .presentationBackground(CTRLColors.base)
+        .sheet(isPresented: $showEditModeSheet) {
+            EditModeView(
+                mode: editingMode,
+                isNewMode: isAddingNewMode,
+                onSave: { savedMode in
+                    if isAddingNewMode {
+                        appState.addMode(savedMode)
+                    } else {
+                        appState.updateMode(savedMode)
+                    }
+                },
+                onCancel: { }
+            )
+            .environmentObject(appState)
+            .presentationBackground(CTRLColors.base)
         }
-        .alert("Override Session", isPresented: $showOverrideConfirm) {
-            Button("Cancel", role: .cancel) { }
-            Button("Override", role: .destructive) {
+        .alert("override session", isPresented: $showOverrideConfirm) {
+            Button("cancel", role: .cancel) { }
+            Button("override", role: .destructive) {
                 if appState.useEmergencyUnlock() {
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.warning)
@@ -54,16 +74,18 @@ struct SettingsView: View {
                 }
             }
         } message: {
-            Text("End session without token? \(appState.emergencyUnlocksRemaining) overrides remaining.")
+            Text("end session without your ctrl? \(appState.emergencyUnlocksRemaining) overrides remaining.")
         }
-        .alert("Unpair Token", isPresented: $showUnpairConfirm) {
-            Button("Cancel", role: .cancel) { }
-            Button("Unpair", role: .destructive) {
-                appState.unpairToken()
+        .alert("sign out?", isPresented: $showSignOutAlert) {
+            Button("cancel", role: .cancel) { }
+            Button("sign out", role: .destructive) {
+                performSignOut()
             }
         } message: {
-            Text("You'll need to pair a token again to use CTRL.")
+            Text("you'll need to sign in again. your modes and history will be kept on this device.")
         }
+        .navigationBarHidden(true)
+        } // NavigationStack
     }
 
     // MARK: - Header
@@ -87,6 +109,48 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Account Section
+
+    private var accountSection: some View {
+        VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
+            CTRLSectionHeader(title: "Account")
+
+            SurfaceCard(padding: 0, cornerRadius: CTRLSpacing.cardRadius) {
+                VStack(spacing: 0) {
+                    // Email row
+                    HStack {
+                        Text("email")
+                            .font(CTRLFonts.bodyFont)
+                            .foregroundColor(CTRLColors.textSecondary)
+
+                        Spacer()
+
+                        Text(appState.userEmail ?? "—")
+                            .font(CTRLFonts.bodyFont)
+                            .foregroundColor(CTRLColors.textTertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .padding(CTRLSpacing.md)
+
+                    CTRLDivider()
+
+                    // Sign Out row
+                    Button(action: signOut) {
+                        HStack {
+                            Text("sign out")
+                                .font(CTRLFonts.bodyFont)
+                                .foregroundColor(CTRLColors.destructive)
+
+                            Spacer()
+                        }
+                        .padding(CTRLSpacing.md)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Modes Section
 
     private var modesSection: some View {
@@ -100,13 +164,11 @@ struct SettingsView: View {
 
                         if index < appState.modes.count - 1 {
                             CTRLDivider()
-                                .padding(.leading, CTRLSpacing.screenPadding + 3)
                         }
                     }
 
                     if appState.modes.count < 6 {
                         CTRLDivider()
-                            .padding(.leading, CTRLSpacing.screenPadding + 3)
 
                         addModeRow
                     }
@@ -123,60 +185,49 @@ struct SettingsView: View {
         let isActive = appState.activeModeId == mode.id
         let editDisabled = isActive && isActiveModeLocked
 
-        return HStack(spacing: 0) {
-            // Active Indicator
-            Rectangle()
-                .fill(isActive ? CTRLColors.accent.opacity(0.7) : Color.clear)
-                .frame(width: 3)
-
-            // Mode Info
-            VStack(alignment: .leading, spacing: CTRLSpacing.micro) {
-                Text(mode.name.lowercased())
-                    .font(CTRLFonts.bodyFont)
-                    .foregroundColor(isActive ? CTRLColors.textPrimary : CTRLColors.textSecondary)
-
-                Text("\(mode.appCount) app\(mode.appCount == 1 ? "" : "s") in scope")
-                    .font(CTRLFonts.micro)
-                    .foregroundColor(CTRLColors.textTertiary)
+        return Button(action: {
+            if !editDisabled {
+                isAddingNewMode = false
+                editingMode = mode
+                showEditModeSheet = true
             }
-            .padding(.leading, CTRLSpacing.md)
+        }) {
+            HStack {
+                // Mode Info
+                VStack(alignment: .leading, spacing: CTRLSpacing.micro) {
+                    Text(mode.name.lowercased())
+                        .font(CTRLFonts.bodyFont)
+                        .foregroundColor(isActive ? CTRLColors.textPrimary : CTRLColors.textSecondary)
 
-            Spacer()
+                    Text("\(mode.appCount) \(mode.appCount == 1 ? "app" : "apps")")
+                        .font(CTRLFonts.micro)
+                        .tracking(1)
+                        .foregroundColor(CTRLColors.textTertiary)
+                }
 
-            // Edit Button (disabled for active mode during session)
-            Button(action: { modeToEdit = mode }) {
-                Image(systemName: "pencil")
-                    .font(.system(size: 14))
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(editDisabled ? CTRLColors.textTertiary.opacity(0.3) : CTRLColors.textTertiary)
             }
-            .disabled(editDisabled)
-            .padding(.trailing, CTRLSpacing.md)
+            .padding(.horizontal, CTRLSpacing.md)
+            .frame(height: 68)
+            .contentShape(Rectangle())
         }
-        .frame(height: 68)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if !blockingManager.isBlocking {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                appState.setActiveMode(id: mode.id)
-            }
-        }
+        .disabled(editDisabled)
     }
 
     private var addModeRow: some View {
         Button(action: {
-            if let newMode = appState.addMode(name: "New Mode") {
-                modeToEdit = newMode
-            }
+            isAddingNewMode = true
+            editingMode = nil
+            showEditModeSheet = true
         }) {
-            HStack(spacing: 0) {
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(width: 3)
-
+            HStack {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(CTRLColors.textTertiary)
-                    .padding(.leading, CTRLSpacing.md)
 
                 Text("add mode")
                     .font(CTRLFonts.bodyFont)
@@ -185,6 +236,7 @@ struct SettingsView: View {
 
                 Spacer()
             }
+            .padding(.horizontal, CTRLSpacing.md)
             .frame(height: 56)
         }
     }
@@ -204,7 +256,7 @@ struct SettingsView: View {
 
                         Spacer()
 
-                        Text("\(appState.emergencyUnlocksRemaining) of 5")
+                        Text("\(appState.emergencyUnlocksRemaining)/5")
                             .font(CTRLFonts.bodyFont)
                             .foregroundColor(CTRLColors.textPrimary)
                             .monospacedDigit()
@@ -214,7 +266,7 @@ struct SettingsView: View {
                         CTRLDivider()
 
                         Button(action: { showOverrideConfirm = true }) {
-                            Text("end session without token")
+                            Text("end session without ctrl")
                                 .font(CTRLFonts.bodySmall)
                                 .foregroundColor(CTRLColors.accent)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -225,111 +277,130 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Token Section
+    // MARK: - FAQ Section
 
-    private var tokenSection: some View {
+    private var faqSection: some View {
         VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
-            CTRLSectionHeader(title: "Token")
+            CTRLSectionHeader(title: "FAQ")
 
             SurfaceCard(padding: 0, cornerRadius: CTRLSpacing.cardRadius) {
                 VStack(spacing: 0) {
-                    // Paired
-                    HStack {
-                        Text("paired")
-                            .font(CTRLFonts.bodyFont)
-                            .foregroundColor(CTRLColors.textSecondary)
-
-                        Spacer()
-
-                        Text(truncatedTokenID)
-                            .font(CTRLFonts.micro)
-                            .foregroundColor(CTRLColors.textTertiary)
-                            .monospaced()
-                    }
-                    .padding(CTRLSpacing.cardPadding)
+                    faqRow(
+                        id: "what",
+                        question: "What is CTRL?",
+                        answer: "CTRL helps you create focus time by pausing distracting apps. Tap your CTRL on your phone to start a session, tap again to end it. A simple, physical way to set boundaries."
+                    )
 
                     CTRLDivider()
-                        .padding(.leading, CTRLSpacing.cardPadding)
 
-                    // Re-pair
-                    Button(action: repairToken) {
-                        HStack {
-                            Text("re-pair token")
-                                .font(CTRLFonts.bodyFont)
-                                .foregroundColor(CTRLColors.textPrimary)
-                            Spacer()
-                        }
-                        .padding(CTRLSpacing.cardPadding)
-                    }
-                    .disabled(blockingManager.isBlocking)
+                    faqRow(
+                        id: "device",
+                        question: "How does the device work?",
+                        answer: "Your CTRL has a secure chip inside. When you tap it on your phone, the app checks it's genuine and starts or ends your focus session. Everything happens on your device. No internet needed."
+                    )
 
                     CTRLDivider()
-                        .padding(.leading, CTRLSpacing.cardPadding)
 
-                    // Unpair
-                    Button(action: { showUnpairConfirm = true }) {
-                        HStack {
-                            Text("unpair token")
-                                .font(CTRLFonts.bodyFont)
-                                .foregroundColor(CTRLColors.destructive)
-                            Spacer()
-                        }
-                        .padding(CTRLSpacing.cardPadding)
-                    }
-                    .disabled(blockingManager.isBlocking)
+                    faqRow(
+                        id: "share",
+                        question: "Can I share it with others?",
+                        answer: "Sure. Any genuine CTRL works with any account. You can pass it around to roommates, family, or friends so multiple people can use it across their phones."
+                    )
+
+                    CTRLDivider()
+
+                    faqRow(
+                        id: "lost",
+                        question: "What if I lose my CTRL?",
+                        answer: "Just order a new one from getctrl.in. There's no pairing step. Any authentic CTRL will work instantly with your app."
+                    )
+
+                    CTRLDivider()
+
+                    faqRow(
+                        id: "override",
+                        question: "What are emergency overrides?",
+                        answer: "You have 5 emergency unlocks each month in case something urgent comes up. They reset on the 1st. Use them only when you really need to."
+                    )
+
+                    CTRLDivider()
+
+                    faqRow(
+                        id: "privacy",
+                        question: "Is my data private?",
+                        answer: "Which apps you choose to pause and how you use them stays only on your phone. We never see your app list, your browsing, or anything else."
+                    )
                 }
             }
-            .opacity(blockingManager.isBlocking ? 0.5 : 1.0)
         }
     }
 
-    private var truncatedTokenID: String {
-        guard let tokenID = appState.pairedTokenID else { return "—" }
-        if tokenID.count > 12 {
-            return "···" + String(tokenID.suffix(8))
-        }
-        return tokenID
-    }
+    private func faqRow(id: String, question: String, answer: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    if expandedFAQ == id {
+                        expandedFAQ = nil
+                    } else {
+                        expandedFAQ = id
+                    }
+                }
+            }) {
+                HStack {
+                    Text(question)
+                        .font(CTRLFonts.bodyFont)
+                        .foregroundColor(CTRLColors.textPrimary)
+                        .multilineTextAlignment(.leading)
 
-    private func repairToken() {
-        nfcManager.scan { result in
-            switch result {
-            case .success(let tagID):
-                appState.pairToken(id: tagID)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-            case .failure(let error):
-                print("[Settings] Re-pair failed: \(error)")
+                    Spacer()
+
+                    Image(systemName: expandedFAQ == id ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(CTRLColors.textTertiary)
+                }
+                .padding(CTRLSpacing.md)
+            }
+
+            if expandedFAQ == id {
+                Text(answer)
+                    .font(CTRLFonts.bodySmall)
+                    .foregroundColor(CTRLColors.textSecondary)
+                    .padding(.horizontal, CTRLSpacing.md)
+                    .padding(.bottom, CTRLSpacing.md)
+                    .transition(.opacity)
             }
         }
     }
 
-    // MARK: - System Section
+    // MARK: - Support Section
 
-    private var systemSection: some View {
+    private var supportSection: some View {
         VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
-            CTRLSectionHeader(title: "System")
+            CTRLSectionHeader(title: "Support")
 
             SurfaceCard(padding: 0, cornerRadius: CTRLSpacing.cardRadius) {
                 VStack(spacing: 0) {
-                    // Version
-                    HStack {
-                        Text("version")
-                            .font(CTRLFonts.bodyFont)
-                            .foregroundColor(CTRLColors.textSecondary)
+                    // Contact Us
+                    Link(destination: URL(string: "mailto:hello@getctrl.in")!) {
+                        HStack {
+                            Text("contact us")
+                                .font(CTRLFonts.bodyFont)
+                                .foregroundColor(CTRLColors.textPrimary)
 
-                        Spacer()
+                            Spacer()
 
-                        Text("1.0.0")
-                            .font(CTRLFonts.bodyFont)
-                            .foregroundColor(CTRLColors.textTertiary)
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 10))
+                                .foregroundColor(CTRLColors.textTertiary)
+                        }
+                        .padding(CTRLSpacing.cardPadding)
                     }
-                    .padding(CTRLSpacing.cardPadding)
 
                     CTRLDivider()
                         .padding(.leading, CTRLSpacing.cardPadding)
 
                     // Website
-                    Link(destination: URL(string: "https://getctrl.in")!) {
+                    Link(destination: URL(string: "https://www.getctrl.in")!) {
                         HStack {
                             Text("website")
                                 .font(CTRLFonts.bodyFont)
@@ -337,10 +408,6 @@ struct SettingsView: View {
 
                             Spacer()
 
-                            Text("getctrl.in")
-                                .font(CTRLFonts.micro)
-                                .foregroundColor(CTRLColors.textTertiary)
-
                             Image(systemName: "arrow.up.right")
                                 .font(.system(size: 10))
                                 .foregroundColor(CTRLColors.textTertiary)
@@ -351,10 +418,10 @@ struct SettingsView: View {
                     CTRLDivider()
                         .padding(.leading, CTRLSpacing.cardPadding)
 
-                    // Privacy
-                    Link(destination: URL(string: "https://getctrl.in/privacy")!) {
+                    // Privacy Policy
+                    Link(destination: URL(string: "https://www.getctrl.in/privacy")!) {
                         HStack {
-                            Text("privacy")
+                            Text("privacy policy")
                                 .font(CTRLFonts.bodyFont)
                                 .foregroundColor(CTRLColors.textPrimary)
 
@@ -367,6 +434,56 @@ struct SettingsView: View {
                         .padding(CTRLSpacing.cardPadding)
                     }
                 }
+            }
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footerSection: some View {
+        VStack(spacing: CTRLSpacing.sm) {
+            // Version
+            HStack {
+                Text("version")
+                    .font(CTRLFonts.bodyFont)
+                    .foregroundColor(CTRLColors.textSecondary)
+
+                Spacer()
+
+                Text("1.0.0")
+                    .font(CTRLFonts.bodyFont)
+                    .foregroundColor(CTRLColors.textTertiary)
+            }
+
+            // Tagline
+            Text("made with intent")
+                .font(CTRLFonts.bodySmall)
+                .foregroundColor(CTRLColors.textTertiary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, CTRLSpacing.sm)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func signOut() {
+        showSignOutAlert = true
+    }
+
+    private func performSignOut() {
+        Task {
+            do {
+                try await SupabaseManager.shared.signOut()
+                await MainActor.run {
+                    // Clear auth state only
+                    appState.userEmail = nil
+                    appState.hasCompletedOnboarding = false
+                    appState.saveState()
+
+                    // Modes, focus history, app selections remain intact
+                }
+            } catch {
+                print("[Settings] Sign out failed: \(error)")
             }
         }
     }

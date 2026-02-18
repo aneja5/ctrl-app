@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01A26E5691C03890C2BEDB51 /* AppSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10BF9DF2459DD579928E50D2 /* AppSelectionView.swift */; };
+		176E897DB6077149EC234EB2 /* CTRLTokenValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56FF39D9488A15D4CF459459 /* CTRLTokenValidator.swift */; };
+		1D7471C1AC2E805BB10B3DB2 /* TokenHistoryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE28A6A57C14CF4E240156CB /* TokenHistoryEntry.swift */; };
+		2E837E9F44428F8E600C8924 /* NFCWriterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE55B037DC8188A0D86921D1 /* NFCWriterManager.swift */; };
+		34C07AB38C52066FC9039EC3 /* SignInOnlyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CEAB543F8F96CBD6F0A6B53 /* SignInOnlyView.swift */; };
+		46A09301D9A3E0B1A6323944 /* TokenHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF989F760C267D9470693CA7 /* TokenHistoryView.swift */; };
 		A1000001233400001 /* CTRLApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233400002 /* CTRLApp.swift */; };
 		A1000001233400003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233400004 /* ContentView.swift */; };
 		A1000001233400005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000001233400006 /* Assets.xcassets */; };
@@ -14,18 +20,26 @@
 		A1000001233400030 /* NFCManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233400031 /* NFCManager.swift */; };
 		A1000001233400040 /* BlockingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233400041 /* BlockingManager.swift */; };
 		A1000001233400050 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001233400051 /* AppState.swift */; };
+		A459F2753BC52300D5E684DB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C5AB1FB057C7B18C2A3C3858 /* Foundation.framework */; };
 		B2000001000000001 /* ShieldConfigurationExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000001000000002 /* ShieldConfigurationExtension.swift */; };
 		B2000001000000010 /* CTRLShield.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B2000001000000003 /* CTRLShield.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B4A3637B11A9A720F05A7A06 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = E947189F9E80DD127F0F0C60 /* Config.plist */; };
 		C3000001000000001 /* CTRLTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3000001000000002 /* CTRLTheme.swift */; };
 		C307C14EAE4F725FE4C459C0 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = DCDE60D590262708572F9D7E /* Supabase */; };
+		C509EF1120631EFEB10E2D65 /* CTRLAdminApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E1A1ABA2B0A6C16FD9562C /* CTRLAdminApp.swift */; };
 		D4000001000000001 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000002 /* OnboardingView.swift */; };
 		D4000001000000003 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000004 /* HomeView.swift */; };
 		D4000001000000005 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000006 /* SettingsView.swift */; };
 		D4000001000000007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000008 /* RootView.swift */; };
+		DCB7364203FA6F611EC740F2 /* ScreenTimePermissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6B90D7F3AA53DE3ACAECD92 /* ScreenTimePermissionView.swift */; };
+		DF852346D9A571760C68042B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5FBF75FB5F9C1686A8B798 /* ContentView.swift */; };
 		E5000001000000001 /* BlockingMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5000001000000002 /* BlockingMode.swift */; };
+		E5E2EC5EEDA2D5ADADE8DE4A /* NFCWriterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2CDF864FA3FA8471312742 /* NFCWriterView.swift */; };
 		EB12DCCA71CE0282B8C35E5B /* SupabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F2FEB222526B08199D66FBD /* SupabaseManager.swift */; };
+		ED2A6F40B5824CC5D1433A9A /* IntentSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C75C09A02202EF9739C59A /* IntentSelectionView.swift */; };
+		F3A5CD5F4EB134B011A58CF2 /* CTRLTokenValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56FF39D9488A15D4CF459459 /* CTRLTokenValidator.swift */; };
 		F6000001000000001 /* EditModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6000001000000002 /* EditModeView.swift */; };
+		F7957CD2B84125B1E6A72D2E /* TokenVerifyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA2114C5C438D6462A58689 /* TokenVerifyView.swift */; };
 		G7000001000000001 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G7000001000000002 /* StatsView.swift */; };
 		H8000001000000001 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H8000001000000002 /* MainTabView.swift */; };
 		I9000001000000001 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = I9000001000000002 /* ActivityView.swift */; };
@@ -57,7 +71,15 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		10BF9DF2459DD579928E50D2 /* AppSelectionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppSelectionView.swift; sourceTree = "<group>"; };
 		1F2FEB222526B08199D66FBD /* SupabaseManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SupabaseManager.swift; path = SupabaseManager.swift; sourceTree = "<group>"; };
+		32A730CC9AB76D37F0C9AB64 /* CTRLAdmin.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = CTRLAdmin.entitlements; sourceTree = "<group>"; };
+		3A2CDF864FA3FA8471312742 /* NFCWriterView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NFCWriterView.swift; sourceTree = "<group>"; };
+		56FF39D9488A15D4CF459459 /* CTRLTokenValidator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CTRLTokenValidator.swift; sourceTree = "<group>"; };
+		5DD217DEABC28F592D2E4663 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7BD5AC32C8CB2D38C58812ED /* CTRLAdmin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CTRLAdmin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9AA2114C5C438D6462A58689 /* TokenVerifyView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TokenVerifyView.swift; sourceTree = "<group>"; };
+		9CEAB543F8F96CBD6F0A6B53 /* SignInOnlyView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SignInOnlyView.swift; sourceTree = "<group>"; };
 		A1000001233400002 /* CTRLApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CTRLApp.swift; sourceTree = "<group>"; };
 		A1000001233400004 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A1000001233400006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -68,15 +90,23 @@
 		A1000001233400031 /* NFCManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NFCManager.swift; sourceTree = "<group>"; };
 		A1000001233400041 /* BlockingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockingManager.swift; sourceTree = "<group>"; };
 		A1000001233400051 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		A6B90D7F3AA53DE3ACAECD92 /* ScreenTimePermissionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ScreenTimePermissionView.swift; sourceTree = "<group>"; };
+		A8C75C09A02202EF9739C59A /* IntentSelectionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IntentSelectionView.swift; sourceTree = "<group>"; };
+		AC5FBF75FB5F9C1686A8B798 /* ContentView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B2000001000000002 /* ShieldConfigurationExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShieldConfigurationExtension.swift; sourceTree = "<group>"; };
 		B2000001000000003 /* CTRLShield.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CTRLShield.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2000001000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B2000001000000005 /* CTRLShield.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CTRLShield.entitlements; sourceTree = "<group>"; };
 		C3000001000000002 /* CTRLTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CTRLTheme.swift; sourceTree = "<group>"; };
+		C5AB1FB057C7B18C2A3C3858 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		CE55B037DC8188A0D86921D1 /* NFCWriterManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NFCWriterManager.swift; sourceTree = "<group>"; };
 		D4000001000000002 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		D4000001000000004 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		D4000001000000006 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D4000001000000008 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		D9E1A1ABA2B0A6C16FD9562C /* CTRLAdminApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CTRLAdminApp.swift; sourceTree = "<group>"; };
+		DE28A6A57C14CF4E240156CB /* TokenHistoryEntry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TokenHistoryEntry.swift; sourceTree = "<group>"; };
+		DF989F760C267D9470693CA7 /* TokenHistoryView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TokenHistoryView.swift; sourceTree = "<group>"; };
 		E5000001000000002 /* BlockingMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockingMode.swift; sourceTree = "<group>"; };
 		E947189F9E80DD127F0F0C60 /* Config.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = Config.plist; path = Config.plist; sourceTree = "<group>"; };
 		F6000001000000002 /* EditModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditModeView.swift; sourceTree = "<group>"; };
@@ -87,6 +117,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		2A8200772D68A8AD7D3B45BB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A459F2753BC52300D5E684DB /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A1000001233400012 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -105,6 +143,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0150C51817E3E0593CD5E498 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				3A2CDF864FA3FA8471312742 /* NFCWriterView.swift */,
+				DF989F760C267D9470693CA7 /* TokenHistoryView.swift */,
+				9AA2114C5C438D6462A58689 /* TokenVerifyView.swift */,
+			);
+			name = Views;
+			path = Views;
+			sourceTree = "<group>";
+		};
 		02953140AE0442AE62B6C5D4 /* Config */ = {
 			isa = PBXGroup;
 			children = (
@@ -114,12 +163,62 @@
 			path = Config;
 			sourceTree = "<group>";
 		};
+		0E0E8B67FD0B9EACED0FA039 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				C5AB1FB057C7B18C2A3C3858 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		40EB65D59783643F950CCE52 /* Managers */ = {
+			isa = PBXGroup;
+			children = (
+				CE55B037DC8188A0D86921D1 /* NFCWriterManager.swift */,
+			);
+			name = Managers;
+			path = Managers;
+			sourceTree = "<group>";
+		};
+		45338A04577374F1D92F9AC7 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				56FF39D9488A15D4CF459459 /* CTRLTokenValidator.swift */,
+			);
+			name = Shared;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		876A48C642D55904FB71E532 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				A6B90D7F3AA53DE3ACAECD92 /* ScreenTimePermissionView.swift */,
+				A8C75C09A02202EF9739C59A /* IntentSelectionView.swift */,
+				10BF9DF2459DD579928E50D2 /* AppSelectionView.swift */,
+				9CEAB543F8F96CBD6F0A6B53 /* SignInOnlyView.swift */,
+			);
+			name = Onboarding;
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		8D53AE3FBB8724DDF2CE5335 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				DE28A6A57C14CF4E240156CB /* TokenHistoryEntry.swift */,
+			);
+			name = Models;
+			path = Models;
+			sourceTree = "<group>";
+		};
 		A1000001233400013 = {
 			isa = PBXGroup;
 			children = (
 				A1000001233400014 /* CTRL */,
 				B2000001000000060 /* CTRLShield */,
 				A1000001233400015 /* Products */,
+				C603066ADCBBE31490DDDE5B /* Frameworks */,
+				C47CC6C431839BEA0F448962 /* CTRLAdmin */,
+				45338A04577374F1D92F9AC7 /* Shared */,
 			);
 			sourceTree = "<group>";
 		};
@@ -146,6 +245,7 @@
 			children = (
 				A1000001233400009 /* CTRL.app */,
 				B2000001000000003 /* CTRLShield.appex */,
+				7BD5AC32C8CB2D38C58812ED /* CTRLAdmin.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -195,6 +295,29 @@
 			path = Theme;
 			sourceTree = "<group>";
 		};
+		C47CC6C431839BEA0F448962 /* CTRLAdmin */ = {
+			isa = PBXGroup;
+			children = (
+				D9E1A1ABA2B0A6C16FD9562C /* CTRLAdminApp.swift */,
+				AC5FBF75FB5F9C1686A8B798 /* ContentView.swift */,
+				5DD217DEABC28F592D2E4663 /* Info.plist */,
+				32A730CC9AB76D37F0C9AB64 /* CTRLAdmin.entitlements */,
+				0150C51817E3E0593CD5E498 /* Views */,
+				40EB65D59783643F950CCE52 /* Managers */,
+				8D53AE3FBB8724DDF2CE5335 /* Models */,
+			);
+			name = CTRLAdmin;
+			path = CTRLAdmin;
+			sourceTree = "<group>";
+		};
+		C603066ADCBBE31490DDDE5B /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0E0E8B67FD0B9EACED0FA039 /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		D4000001000000010 /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -207,6 +330,7 @@
 				H8000001000000002 /* MainTabView.swift */,
 				I9000001000000002 /* ActivityView.swift */,
 				J1000001000000002 /* ModeSelectionSheet.swift */,
+				876A48C642D55904FB71E532 /* Onboarding */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -214,6 +338,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		428644A96BB683B6D5C268E3 /* CTRLAdmin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B8C8D5947098DD6E8C5B09BD /* Build configuration list for PBXNativeTarget "CTRLAdmin" */;
+			buildPhases = (
+				ED232A98B9459BA4F6CB9F97 /* Sources */,
+				2A8200772D68A8AD7D3B45BB /* Frameworks */,
+				AA0A1E57F4943AC010740419 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CTRLAdmin;
+			productName = CTRLAdmin;
+			productReference = 7BD5AC32C8CB2D38C58812ED /* CTRLAdmin.app */;
+			productType = "com.apple.product-type.application";
+		};
 		A1000001233400018 /* CTRL */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A1000001233400019 /* Build configuration list for PBXNativeTarget "CTRL" */;
@@ -289,6 +430,7 @@
 			targets = (
 				A1000001233400018 /* CTRL */,
 				B2000001000000030 /* CTRLShield */,
+				428644A96BB683B6D5C268E3 /* CTRLAdmin */,
 			);
 		};
 /* End PBXProject section */
@@ -301,6 +443,13 @@
 				A1000001233400007 /* Preview Assets.xcassets in Resources */,
 				A1000001233400005 /* Assets.xcassets in Resources */,
 				B4A3637B11A9A720F05A7A06 /* Config.plist in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0A1E57F4943AC010740419 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -335,6 +484,11 @@
 				I9000001000000001 /* ActivityView.swift in Sources */,
 				J1000001000000001 /* ModeSelectionSheet.swift in Sources */,
 				EB12DCCA71CE0282B8C35E5B /* SupabaseManager.swift in Sources */,
+				176E897DB6077149EC234EB2 /* CTRLTokenValidator.swift in Sources */,
+				DCB7364203FA6F611EC740F2 /* ScreenTimePermissionView.swift in Sources */,
+				ED2A6F40B5824CC5D1433A9A /* IntentSelectionView.swift in Sources */,
+				01A26E5691C03890C2BEDB51 /* AppSelectionView.swift in Sources */,
+				34C07AB38C52066FC9039EC3 /* SignInOnlyView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -343,6 +497,21 @@
 			buildActionMask = 2147483647;
 			files = (
 				B2000001000000001 /* ShieldConfigurationExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ED232A98B9459BA4F6CB9F97 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C509EF1120631EFEB10E2D65 /* CTRLAdminApp.swift in Sources */,
+				DF852346D9A571760C68042B /* ContentView.swift in Sources */,
+				F3A5CD5F4EB134B011A58CF2 /* CTRLTokenValidator.swift in Sources */,
+				E5E2EC5EEDA2D5ADADE8DE4A /* NFCWriterView.swift in Sources */,
+				46A09301D9A3E0B1A6323944 /* TokenHistoryView.swift in Sources */,
+				F7957CD2B84125B1E6A72D2E /* TokenVerifyView.swift in Sources */,
+				2E837E9F44428F8E600C8924 /* NFCWriterManager.swift in Sources */,
+				1D7471C1AC2E805BB10B3DB2 /* TokenHistoryEntry.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -357,6 +526,63 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		6084CAE5E3E6316173385BFE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = CTRLAdmin/CTRLAdmin.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QGFM475H63;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CTRLAdmin/Info.plist;
+				INFOPLIST_KEY_NFCReaderUsageDescription = "CTRLAdmin needs NFC to write tokens to tags.";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = in.getctrl.admin;
+				PRODUCT_NAME = CTRLAdmin;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		7809755543A5E83FB178ECA5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = CTRLAdmin/CTRLAdmin.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QGFM475H63;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CTRLAdmin/Info.plist;
+				INFOPLIST_KEY_NFCReaderUsageDescription = "CTRLAdmin needs NFC to write tokens to tags.";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = in.getctrl.admin;
+				PRODUCT_NAME = CTRLAdmin;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		A1000001233400024 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -616,6 +842,15 @@
 			buildConfigurations = (
 				B20000010000000B0 /* Debug */,
 				B20000010000000C0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B8C8D5947098DD6E8C5B09BD /* Build configuration list for PBXNativeTarget "CTRLAdmin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7809755543A5E83FB178ECA5 /* Release */,
+				6084CAE5E3E6316173385BFE /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -5,7 +5,7 @@ struct HomeView: View {
     @EnvironmentObject var nfcManager: NFCManager
     @EnvironmentObject var blockingManager: BlockingManager
 
-    @State private var showWrongTokenAlert = false
+    @State private var showInvalidTagAlert = false
     @State private var currentTime = Date()
     @State private var showModeSheet = false
     @State private var showActivity = false
@@ -91,10 +91,15 @@ struct HomeView: View {
             }
 
         }
-        .alert("Wrong Token", isPresented: $showWrongTokenAlert) {
-            Button("OK", role: .cancel) {}
+        .alert("not a genuine ctrl", isPresented: $showInvalidTagAlert) {
+            Button("ok", role: .cancel) { }
+            Button("get yours") {
+                if let url = URL(string: "https://www.getctrl.in") {
+                    UIApplication.shared.open(url)
+                }
+            }
         } message: {
-            Text("This token doesn't match your paired token. Use the same token you set up during onboarding.")
+            Text("only official ctrl devices can start your focus sessions. get yours at getctrl.in")
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             if isInSession {
@@ -178,12 +183,12 @@ struct HomeView: View {
         Group {
             if isInSession {
                 Button(action: triggerNFCScan) {
-                    Text("End Session")
+                    Text("end session")
                 }
                 .buttonStyle(CTRLSecondaryButtonStyle(accentBorder: true))
             } else {
                 Button(action: triggerNFCScan) {
-                    Text("Lock In")
+                    Text("lock in")
                 }
                 .buttonStyle(CTRLPrimaryButtonStyle(isActive: true))
             }
@@ -196,7 +201,7 @@ struct HomeView: View {
     private var modeSelector: some View {
         Button(action: { showModeSheet = true }) {
             HStack(spacing: CTRLSpacing.xs) {
-                Text(appState.activeMode?.name ?? "Select")
+                Text(appState.activeMode?.name.lowercased() ?? "select")
                     .font(CTRLFonts.bodySmall)
                     .foregroundColor(CTRLColors.textSecondary)
 
@@ -295,82 +300,36 @@ struct HomeView: View {
     // MARK: - Actions
 
     private func triggerNFCScan() {
-        let mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
-        let lightHaptic = UIImpactFeedbackGenerator(style: .light)
-        mediumHaptic.prepare()
-        lightHaptic.prepare()
-
-        let wasInSession = isInSession
-
         nfcManager.scan { result in
             switch result {
-            case .success(let tagID):
-                // Verify token matches paired token
-                guard let pairedID = appState.pairedTokenID, tagID == pairedID else {
-                    let errorFeedback = UINotificationFeedbackGenerator()
-                    errorFeedback.notificationOccurred(.error)
-                    showWrongTokenAlert = true
-                    return
-                }
+            case .success(_):
+                // Valid ctrl scanned
+                let generator = UIImpactFeedbackGenerator(style: isInSession ? .light : .medium)
+                generator.impactOccurred()
 
-                // -- Haptic: medium thud (the "seal") --
-                mediumHaptic.impactOccurred()
-
-                // Prepare timer entrance state before toggling (lock-in only)
-                if !wasInSession {
-                    timerScale = 0.95
-                    timerOpacity = 0
-                }
-
-                // -- Bronze glow pulse radiates from center (lock-in only) --
-                if !wasInSession {
-                    ritualGlowPulse = 0.3
-                    withAnimation(.easeOut(duration: 0.6)) {
-                        ritualGlowPulse = 1.2
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                        ritualGlowPulse = 0
-                    }
-                }
-
-                // -- Cross-fade state (400ms ease) --
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    let wasBlocking = blockingManager.isBlocking
+                if isInSession {
+                    // End session
+                    appState.stopBlockingTimer()
+                    blockingManager.deactivateBlocking()
+                } else {
+                    // Start session
                     if let mode = appState.activeMode {
-                        blockingManager.toggleBlocking(for: mode.appSelection, strictMode: appState.strictModeEnabled)
+                        blockingManager.activateBlocking(for: mode.appSelection, strictMode: appState.strictModeEnabled)
                     } else {
-                        blockingManager.toggleBlocking(for: appState.selectedApps, strictMode: appState.strictModeEnabled)
+                        blockingManager.activateBlocking(for: appState.selectedApps, strictMode: appState.strictModeEnabled)
                     }
-                    appState.isBlocking = blockingManager.isBlocking
-
-                    // Start or stop focus timer
-                    if !wasBlocking && blockingManager.isBlocking {
-                        appState.startBlockingTimer()
-                    } else if wasBlocking && !blockingManager.isBlocking {
-                        appState.stopBlockingTimer()
-                    }
+                    appState.startBlockingTimer()
                 }
-
-                // -- Timer fades in with scale 0.95 → 1.0 (lock-in only) --
-                if !wasInSession {
-                    withAnimation(.easeOut(duration: 0.5).delay(0.15)) {
-                        timerScale = 1.0
-                        timerOpacity = 1.0
-                    }
-                }
-
-                // -- Light haptic 100ms after medium --
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    lightHaptic.impactOccurred()
-                }
+                appState.isBlocking = blockingManager.isBlocking
 
             case .failure(let error):
                 if case NFCError.userCancelled = error {
                     return
                 }
-                let errorFeedback = UINotificationFeedbackGenerator()
-                errorFeedback.notificationOccurred(.error)
-                print("[HomeView] NFC scan failed: \(error.localizedDescription)")
+                if case NFCError.invalidTag = error {
+                    showInvalidTagAlert = true
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
             }
         }
     }

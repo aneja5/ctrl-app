@@ -11,8 +11,6 @@ class AppState: ObservableObject {
     // MARK: - UserDefaults Keys
 
     private enum Keys {
-        static let isPaired = "ctrl_is_paired"
-        static let pairedTokenID = "ctrl_paired_token_id"
         static let isBlocking = "ctrl_is_blocking"
         static let selectedApps = "ctrl_selected_apps_data"
         static let emergencyUnlocks = "ctrl_emergency_unlocks_remaining"
@@ -26,21 +24,33 @@ class AppState: ObservableObject {
         static let strictMode = "ctrl_strict_mode"
         static let hasCompletedOnboarding = "ctrl_has_completed_onboarding"
         static let userEmail = "ctrl_user_email"
+        static let sessionStartTime = "ctrl_session_start_time"
+        static let isInSession = "ctrl_is_in_session"
     }
 
     // MARK: - Persistence
 
     private let defaults: UserDefaults
     private var cancellables = Set<AnyCancellable>()
+    private var isLoadingState = false  // Prevents didSet triggers during loadState
 
     // MARK: - Published Properties
 
     @Published var isAuthorized: Bool = false
-    @Published var isPaired: Bool = false
     @Published var isBlocking: Bool = false
-    @Published var pairedTokenID: String?
     @Published var selectedApps: FamilyActivitySelection = FamilyActivitySelection()
-    @Published var modes: [BlockingMode] = []
+    @Published var modes: [BlockingMode] = [] {
+        didSet {
+            #if DEBUG
+            print("[AppState] Modes changed: \(modes.count) modes")
+            if modes.isEmpty {
+                print("[AppState] ⚠️ MODES CLEARED - stack trace needed")
+                Thread.callStackSymbols.forEach { print($0) }
+            }
+            #endif
+            // Don't saveState() here — Combine observer handles it (debounced)
+        }
+    }
     @Published var activeModeId: UUID? = nil
     @Published var emergencyUnlocksRemaining: Int = 5
     @Published var totalBlockedSeconds: TimeInterval = 0
@@ -48,9 +58,19 @@ class AppState: ObservableObject {
     @Published var strictModeEnabled: Bool = false
     @Published var hasCompletedOnboarding: Bool = false
     @Published var userEmail: String? = nil
+    @Published var isInSession: Bool = false
+    @Published var elapsedSeconds: Int = 0
+    @Published var sessionStartTime: Date? {
+        didSet {
+            if !isLoadingState {
+                debouncedSave()
+            }
+        }
+    }
     var lastEmergencyResetDate: Date?
     var blockingStartDate: Date? = nil
     var focusDate: Date? = nil
+    private var timer: Timer?
 
     static let maxModes = 6
 
@@ -61,19 +81,50 @@ class AppState: ObservableObject {
         return modes.first { $0.id == id }
     }
 
+    /// User has modes = they've used the app before
+    var hasPreviousData: Bool {
+        return !modes.isEmpty
+    }
+
+    /// Screen Time permission has been granted
+    var hasScreenTimePermission: Bool {
+        return AuthorizationCenter.shared.authorizationStatus == .approved
+    }
+
     // MARK: - Init
 
     private init() {
+        #if DEBUG
+        print("[AppState] init - START")
+        #endif
         if let suiteDefaults = UserDefaults(suiteName: "group.in.getctrl.app") {
             self.defaults = suiteDefaults
-            print("[AppState] Using App Group UserDefaults")
         } else {
             self.defaults = UserDefaults.standard
             print("[AppState] WARNING: App Group unavailable, falling back to standard UserDefaults")
         }
+
+        // Detect fresh install BEFORE loading state
+        // Keychain (Supabase auth) survives app deletion, UserDefaults does not
+        // Only sign out if truly fresh — no onboarding AND no email (mid-onboarding users have email)
+        let hasOnboarded = defaults.bool(forKey: Keys.hasCompletedOnboarding)
+        let hasEmail = defaults.string(forKey: Keys.userEmail) != nil
+        if !hasOnboarded && !hasEmail {
+            #if DEBUG
+            print("[AppState] Fresh install detected - clearing stale Keychain auth")
+            #endif
+            Task {
+                try? await SupabaseManager.shared.signOut()
+            }
+        }
+
         loadState()
         observeChanges()
-        print("[AppState] Init complete — isPaired: \(isPaired), hasCompletedOnboarding: \(hasCompletedOnboarding)")
+        restoreSessionIfNeeded()
+
+        #if DEBUG
+        print("[AppState] Init complete — hasCompletedOnboarding: \(hasCompletedOnboarding), modes: \(modes.count)")
+        #endif
     }
 
     // MARK: - Auto-Save Observers
@@ -81,37 +132,29 @@ class AppState: ObservableObject {
     private func observeChanges() {
         $selectedApps
             .dropFirst()
-            .sink { [weak self] _ in self?.saveState() }
-            .store(in: &cancellables)
-
-        $isPaired
-            .dropFirst()
-            .removeDuplicates()
-            .sink { [weak self] _ in self?.saveState() }
-            .store(in: &cancellables)
-
-        $pairedTokenID
-            .dropFirst()
-            .removeDuplicates()
-            .sink { [weak self] _ in self?.saveState() }
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.debouncedSave() }
             .store(in: &cancellables)
 
         $modes
             .dropFirst()
-            .sink { [weak self] _ in self?.saveState() }
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.debouncedSave() }
             .store(in: &cancellables)
 
         $activeModeId
             .dropFirst()
-            .sink { [weak self] _ in self?.saveState() }
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.debouncedSave() }
             .store(in: &cancellables)
     }
 
     // MARK: - State Persistence
 
     func loadState() {
-        isPaired = defaults.bool(forKey: Keys.isPaired)
-        pairedTokenID = defaults.string(forKey: Keys.pairedTokenID)
+        isLoadingState = true
+        defer { isLoadingState = false }
+
         hasCompletedOnboarding = defaults.bool(forKey: Keys.hasCompletedOnboarding)
         userEmail = defaults.string(forKey: Keys.userEmail)
         // isBlocking is NOT persisted — always starts as false on launch
@@ -121,14 +164,22 @@ class AppState: ObservableObject {
         if let data = defaults.data(forKey: Keys.selectedApps),
            let selection = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) {
             selectedApps = selection
-            print("[AppState] Loaded \(selection.applicationTokens.count) apps, \(selection.categoryTokens.count) categories")
         }
 
         // Load modes
         if let data = defaults.data(forKey: Keys.modesData),
            let loadedModes = try? JSONDecoder().decode([BlockingMode].self, from: data) {
-            modes = loadedModes
-            print("[AppState] Loaded \(loadedModes.count) blocking modes")
+            // Deduplicate by name (keep first occurrence)
+            var seenNames = Set<String>()
+            let uniqueModes = loadedModes.filter { mode in
+                let key = mode.name.lowercased()
+                if seenNames.contains(key) {
+                    return false
+                }
+                seenNames.insert(key)
+                return true
+            }
+            modes = uniqueModes
         }
 
         // Load active mode ID
@@ -137,16 +188,8 @@ class AppState: ObservableObject {
             activeModeId = id
         }
 
-        // Create default mode if none exist
-        if modes.isEmpty {
-            let defaultMode = BlockingMode(name: "Focus", appSelection: selectedApps)
-            modes = [defaultMode]
-            activeModeId = defaultMode.id
-            print("[AppState] Created default 'Focus' mode")
-        }
-
         // Ensure activeModeId points to an existing mode
-        if activeModeId == nil || !modes.contains(where: { $0.id == activeModeId }) {
+        if !modes.isEmpty && (activeModeId == nil || !modes.contains(where: { $0.id == activeModeId })) {
             activeModeId = modes.first?.id
         }
 
@@ -169,29 +212,50 @@ class AppState: ObservableObject {
         // If app was blocking but no start date recorded, set it now
         if isBlocking && blockingStartDate == nil {
             blockingStartDate = Date()
+            #if DEBUG
             print("[AppState] Restored missing blockingStartDate")
+            #endif
+        }
+
+        // Load session state
+        isInSession = defaults.bool(forKey: Keys.isInSession)
+
+        let startTimeInterval = defaults.double(forKey: Keys.sessionStartTime)
+        if startTimeInterval > 0 {
+            sessionStartTime = Date(timeIntervalSince1970: startTimeInterval)
+        } else {
+            sessionStartTime = nil
         }
 
         checkAndResetDailyFocusTime()
         checkAndResetMonthlyAllowance()
 
-        // DEBUG: Add sample data for testing (remove before production)
-        if focusHistory.isEmpty {
-            print("[AppState] No focus history found, adding sample data...")
-            addSampleFocusHistory()
-        } else {
-            print("[AppState] Loaded focus history: \(focusHistory.count) entries")
-            for entry in focusHistory.prefix(5) {
-                print("  - \(entry.date): \(Int(entry.totalSeconds / 60)) minutes")
-            }
-        }
+        #if DEBUG
+        print("[AppState] loadState — email: \(userEmail ?? "nil"), onboarded: \(hasCompletedOnboarding), modes: \(modes.count)")
+        #endif
+    }
 
-        print("[AppState] loadState — isPaired: \(isPaired), tokenID: \(pairedTokenID ?? "nil"), email: \(userEmail ?? "nil"), onboarded: \(hasCompletedOnboarding), modes: \(modes.count), activeModeId: \(activeModeId?.uuidString ?? "nil"), emergencyUnlocks: \(emergencyUnlocksRemaining)")
+    // MARK: - Debounced Save
+
+    private var saveWorkItem: DispatchWorkItem?
+
+    /// Debounced save — coalesces rapid changes into a single write
+    private func debouncedSave() {
+        saveWorkItem?.cancel()
+        saveWorkItem = DispatchWorkItem { [weak self] in
+            self?.saveState()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: saveWorkItem!)
     }
 
     func saveState() {
-        defaults.set(isPaired, forKey: Keys.isPaired)
-        defaults.set(pairedTokenID, forKey: Keys.pairedTokenID)
+        guard !isLoadingState else {
+            #if DEBUG
+            print("[AppState] saveState - SKIPPED (loading in progress)")
+            #endif
+            return
+        }
+
         // isBlocking intentionally NOT saved
 
         if let data = try? PropertyListEncoder().encode(selectedApps) {
@@ -224,8 +288,19 @@ class AppState: ObservableObject {
         defaults.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding)
         defaults.set(userEmail, forKey: Keys.userEmail)
 
+        // Save session state
+        defaults.set(isInSession, forKey: Keys.isInSession)
+        if let startTime = sessionStartTime {
+            defaults.set(startTime.timeIntervalSince1970, forKey: Keys.sessionStartTime)
+        } else {
+            defaults.removeObject(forKey: Keys.sessionStartTime)
+        }
+
         defaults.synchronize()
-        print("[AppState] saveState — isPaired: \(isPaired), tokenID: \(pairedTokenID ?? "nil"), modes: \(modes.count), activeMode: \(activeMode?.name ?? "nil")")
+
+        #if DEBUG
+        print("[AppState] saveState — modes: \(modes.count), activeMode: \(activeMode?.name ?? "nil")")
+        #endif
     }
 
     // MARK: - Selected Apps
@@ -234,7 +309,6 @@ class AppState: ObservableObject {
         // Don't overwrite existing apps with empty selection
         if selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty {
             if !self.selectedApps.applicationTokens.isEmpty || !self.selectedApps.categoryTokens.isEmpty {
-                print("[AppState] Ignoring empty selection, keeping existing apps")
                 return
             }
         }
@@ -243,13 +317,11 @@ class AppState: ObservableObject {
         if let data = try? PropertyListEncoder().encode(selection) {
             defaults.set(data, forKey: Keys.selectedApps)
             defaults.synchronize()
-            print("[AppState] Saved \(selection.applicationTokens.count) apps, \(selection.categoryTokens.count) categories")
         }
 
         // Sync to the active mode
         if let id = activeModeId, let index = modes.firstIndex(where: { $0.id == id }) {
             modes[index].appSelection = selection
-            print("[AppState] Synced selection to active mode: \(modes[index].name)")
         }
     }
 
@@ -264,7 +336,9 @@ class AppState: ObservableObject {
                 emergencyUnlocksRemaining = 5
                 lastEmergencyResetDate = now
                 saveState()
+                #if DEBUG
                 print("[AppState] Monthly emergency unlocks reset to 5")
+                #endif
             }
         } else {
             lastEmergencyResetDate = now
@@ -276,7 +350,9 @@ class AppState: ObservableObject {
         if emergencyUnlocksRemaining > 0 {
             emergencyUnlocksRemaining -= 1
             saveState()
+            #if DEBUG
             print("[AppState] Emergency unlock used, remaining: \(emergencyUnlocksRemaining)")
+            #endif
             return true
         }
         return false
@@ -299,7 +375,9 @@ class AppState: ObservableObject {
                 focusDate = today
                 trimOldHistory()
                 saveState()
-                print("[AppState] Daily focus time reset to 0")
+                #if DEBUG
+                print("[AppState] Daily focus time reset")
+                #endif
             }
         } else {
             focusDate = today
@@ -309,25 +387,79 @@ class AppState: ObservableObject {
 
     func startBlockingTimer() {
         checkAndResetDailyFocusTime()
-        blockingStartDate = Date()
+        isInSession = true
+        let now = Date()
+        sessionStartTime = now
+        blockingStartDate = now
+        elapsedSeconds = 0
+        startTimer()
         saveState()
-        print("[AppState] Started blocking timer at \(blockingStartDate!)")
     }
 
     func stopBlockingTimer() {
-        if let start = blockingStartDate {
-            let elapsed = Date().timeIntervalSince(start)
-            totalBlockedSeconds += elapsed
-            blockingStartDate = nil
-            logToTodayHistory(elapsed)
-            saveState()
-            print("[AppState] Blocking timer stopped, added \(Int(elapsed))s, total: \(Int(totalBlockedSeconds))s")
+        isInSession = false
+        sessionStartTime = nil
+        timer?.invalidate()
+        timer = nil
+
+        // Log focus time (only once!)
+        if let startDate = blockingStartDate {
+            let elapsed = Int(Date().timeIntervalSince(startDate))
+            if elapsed > 0 {
+                totalBlockedSeconds += TimeInterval(elapsed)
+                logToTodayHistory(TimeInterval(elapsed))
+                #if DEBUG
+                print("[AppState] Session ended — \(elapsed)s logged")
+                #endif
+            }
         }
+
+        blockingStartDate = nil
+        elapsedSeconds = 0
+        saveState()
     }
 
     var currentSessionSeconds: TimeInterval {
         guard let start = blockingStartDate else { return 0 }
         return Date().timeIntervalSince(start)
+    }
+
+    // MARK: - Session Restore
+
+    func restoreSessionIfNeeded() {
+        guard isInSession else { return }
+
+        guard let startTime = sessionStartTime else {
+            #if DEBUG
+            print("[AppState] restoreSession - sessionStartTime is nil, cannot restore")
+            #endif
+            return
+        }
+
+        // Restore blockingStartDate if needed
+        if blockingStartDate == nil {
+            blockingStartDate = startTime
+        }
+
+        // Calculate elapsed time
+        let elapsed = Int(Date().timeIntervalSince(startTime))
+        elapsedSeconds = max(0, elapsed)
+
+        // Restart the timer
+        startTimer()
+
+        #if DEBUG
+        print("[AppState] Restored session — elapsed: \(elapsedSeconds)s")
+        #endif
+    }
+
+    private func startTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.elapsedSeconds += 1
+            }
+        }
     }
 
     // MARK: - Focus History Helpers
@@ -397,30 +529,40 @@ class AppState: ObservableObject {
 
     // MARK: - Blocking Modes
 
-    func addMode(name: String) -> BlockingMode? {
-        guard modes.count < 6 else { return nil }
-        let newMode = BlockingMode(name: name)
-        modes.append(newMode)
+    func addMode(_ mode: BlockingMode) {
+        // Prevent duplicates by name
+        guard !modes.contains(where: { $0.name.lowercased() == mode.name.lowercased() }) else {
+            // Still set as active if needed
+            if let existing = modes.first(where: { $0.name.lowercased() == mode.name.lowercased() }) {
+                activeModeId = existing.id
+            }
+            return
+        }
+
+        guard modes.count < 6 else { return }
+        modes.append(mode)
+
+        // Set as active if it's the first mode
+        if modes.count == 1 {
+            activeModeId = mode.id
+        }
         saveState()
-        print("[AppState] Added mode: \(name), total: \(modes.count)")
-        return newMode
     }
 
-    func deleteMode(id: UUID) {
-        guard modes.count > 1 else { return } // Keep at least one mode
-        modes.removeAll { $0.id == id }
-        if activeModeId == id {
+    func deleteMode(_ mode: BlockingMode) {
+        guard modes.count > 1 else { return }
+        modes.removeAll { $0.id == mode.id }
+
+        if activeModeId == mode.id {
             activeModeId = modes.first?.id
         }
         saveState()
-        print("[AppState] Deleted mode, remaining: \(modes.count)")
     }
 
     func updateMode(_ mode: BlockingMode) {
         if let index = modes.firstIndex(where: { $0.id == mode.id }) {
             modes[index] = mode
             saveState()
-            print("[AppState] Updated mode: \(mode.name), apps: \(mode.appCount)")
         }
     }
 
@@ -430,70 +572,14 @@ class AppState: ObservableObject {
             selectedApps = mode.appSelection
         }
         saveState()
-        print("[AppState] Active mode set to: \(activeMode?.name ?? "nil")")
-    }
-
-    // MARK: - Token Pairing
-
-    func pairToken(id: String) {
-        pairedTokenID = id
-        isPaired = true
-    }
-
-    func unpairToken() {
-        pairedTokenID = nil
-        isPaired = false
     }
 
     // MARK: - Onboarding
 
     func markOnboardingComplete() {
+        guard !hasCompletedOnboarding else { return }
         hasCompletedOnboarding = true
         saveState()
-        print("[AppState] Onboarding marked complete")
     }
 
-    // MARK: - Sample Data (DEBUG — remove before production)
-
-    private func addSampleFocusHistory() {
-        let calendar = Calendar.current
-        let today = Date()
-
-        // Sample hours for each day going back 28 days
-        // index 0 = today (will combine with live data), 1 = yesterday, etc.
-        let sampleHours: [Double] = [
-            // This week
-            0, 0.5, 1.8, 0, 3.2, 2.5, 0,
-            // Last week
-            1.5, 2.0, 0, 4.5, 3.0, 1.2, 0,
-            // 2 weeks ago
-            2.8, 0, 1.5, 2.2, 0, 3.8, 1.0,
-            // 3 weeks ago
-            0, 5.2, 2.1, 0, 1.8, 2.5, 0.8
-        ]
-
-        var history: [DailyFocusEntry] = []
-
-        for (index, hours) in sampleHours.enumerated() {
-            guard hours > 0 else { continue }
-
-            if let date = calendar.date(byAdding: .day, value: -index, to: today) {
-                let dateKey = DailyFocusEntry.dateFormatter.string(from: date)
-                let seconds = hours * 3600
-                history.append(DailyFocusEntry(date: dateKey, totalSeconds: seconds))
-                print("[AppState] Added sample: \(dateKey) = \(hours)h")
-            }
-        }
-
-        focusHistory = history
-        saveState()
-        print("[AppState] Sample focus history saved: \(history.count) entries")
-    }
-
-    /// DEBUG: Call this to force-refresh sample data (remove before production)
-    func resetAndAddSampleData() {
-        defaults.removeObject(forKey: Keys.focusHistory)
-        focusHistory = []
-        addSampleFocusHistory()
-    }
 }

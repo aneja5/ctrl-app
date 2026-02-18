@@ -285,13 +285,13 @@ struct CTRLDivider: View {
     }
 }
 
-// MARK: - Section Header (UPPERCASE, tracked)
+// MARK: - Section Header (lowercase, tracked)
 
 struct CTRLSectionHeader: View {
     let title: String
 
     var body: some View {
-        Text(title.uppercased())
+        Text(title.lowercased())
             .font(CTRLFonts.captionFont)
             .tracking(2)
             .foregroundColor(CTRLColors.textTertiary)

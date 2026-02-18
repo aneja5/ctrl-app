@@ -3,11 +3,12 @@
 <plist version="1.0">
 <dict>
 	<key>NFCReaderUsageDescription</key>
-	<string>CTRL uses NFC to read your device and start focus sessions.</string>
+	<string>CTRLAdmin needs NFC to write tokens to tags.</string>
+	<key>com.apple.developer.nfc.readersession.iso7816.select-identifiers</key>
+	<array/>
 	<key>com.apple.developer.nfc.readersession.formats</key>
 	<array>
 		<string>NDEF</string>
-		<string>TAG</string>
 	</array>
 </dict>
 </plist>

@@ -1,7 +1,6 @@
 import CoreNFC
 import Combine
 import UIKit
-import CryptoKit
 
 class NFCManager: NSObject, ObservableObject {
 
@@ -47,7 +46,7 @@ class NFCManager: NSObject, ObservableObject {
             queue: nil,
             invalidateAfterFirstRead: true
         )
-        session?.alertMessage = "Hold your CTRL token near the top of your iPhone"
+        session?.alertMessage = "hold your ctrl near the top of your iphone"
 
         isScanning = true
         errorMessage = nil
@@ -154,15 +153,35 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
                             return
                         }
 
-                        // Generate unique tag ID
-                        let tagID = self.generateTagID(capacity: capacity, message: message)
+                        // Extract text payload from NDEF message
+                        guard let payload = self.extractTextPayload(from: message) else {
+                            session.invalidate(errorMessage: "couldn't read your ctrl. try again.")
+                            DispatchQueue.main.async {
+                                self.completionHandler?(.failure(NFCError.invalidTag))
+                                self.completionHandler = nil
+                            }
+                            return
+                        }
 
-                        // Provide haptic feedback
+                        // Validate the ctrl signature
+                        let (isValid, tagID) = CTRLTokenValidator.validate(payload: payload)
+
+                        guard isValid, let tagID = tagID else {
+                            session.invalidate(errorMessage: "couldn't read your ctrl. try again.")
+                            DispatchQueue.main.async {
+                                self.feedbackGenerator.notificationOccurred(.error)
+                                self.completionHandler?(.failure(NFCError.invalidTag))
+                                self.completionHandler = nil
+                            }
+                            return
+                        }
+
+                        // Valid ctrl — provide success haptic
                         DispatchQueue.main.async {
                             self.feedbackGenerator.notificationOccurred(.success)
                         }
 
-                        session.alertMessage = "CTRL token detected!"
+                        session.alertMessage = "success!"
                         session.invalidate()
 
                         DispatchQueue.main.async {
@@ -185,45 +204,31 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
     }
 }
 
-// MARK: - Tag ID Generation
+// MARK: - Payload Extraction
 
 private extension NFCManager {
 
-    func generateTagID(capacity: Int, message: NFCNDEFMessage?) -> String {
-        var dataToHash = Data()
+    /// Extracts the text string from an NDEF message's first text record.
+    func extractTextPayload(from message: NFCNDEFMessage?) -> String? {
+        guard let record = message?.records.first else { return nil }
 
-        // Include capacity in hash
-        withUnsafeBytes(of: capacity) { bytes in
-            dataToHash.append(contentsOf: bytes)
+        // Check for well-known text type (RTD "T")
+        guard record.typeNameFormat == .nfcWellKnown,
+              let type = String(data: record.type, encoding: .utf8),
+              type == "T" else {
+            return nil
         }
 
-        // Include NDEF payload data if available
-        if let message = message {
-            for record in message.records {
-                dataToHash.append(record.identifier)
-                dataToHash.append(record.type)
-                dataToHash.append(record.payload)
-            }
-        }
+        let payload = record.payload
+        guard !payload.isEmpty else { return nil }
 
-        // If no payload data, use capacity alone with a salt
-        if dataToHash.count <= MemoryLayout<Int>.size {
-            let salt = "CTRL-NFC-SALT".data(using: .utf8)!
-            dataToHash.append(salt)
-        }
+        // First byte is the language code length
+        let languageCodeLength = Int(payload[0] & 0x3F)
+        let textStartIndex = 1 + languageCodeLength
 
-        // Generate SHA256 hash
-        let hash = SHA256.hash(data: dataToHash)
+        guard textStartIndex < payload.count else { return nil }
 
-        // Convert to base64 and take first 24 characters
-        let base64 = Data(hash).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-
-        let truncated = String(base64.prefix(24))
-
-        return "CTRL-\(truncated)"
+        return String(data: payload[textStartIndex...], encoding: .utf8)
     }
 }
 
@@ -234,6 +239,7 @@ enum NFCError: LocalizedError {
     case userCancelled
     case timeout
     case notSupported
+    case invalidTag
     case unknown
 
     var errorDescription: String? {
@@ -246,6 +252,8 @@ enum NFCError: LocalizedError {
             return "Session timed out"
         case .notSupported:
             return "Tag is not supported"
+        case .invalidTag:
+            return "couldn't read your ctrl. try again."
         case .unknown:
             return "An unknown error occurred"
         }

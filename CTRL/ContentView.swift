@@ -165,7 +165,7 @@ struct ContentView: View {
             }
             .disabled(!nfcManager.isAvailable || nfcManager.isScanning)
 
-            Text("Tap Token to Toggle")
+            Text("tap ctrl to toggle")
                 .font(.headline)
                 .foregroundColor(Color(.systemGray))
 

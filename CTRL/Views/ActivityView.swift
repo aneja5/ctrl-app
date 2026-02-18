@@ -311,7 +311,9 @@ struct ActivityView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
 
-        return "\(formatter.string(from: startOfWeek)) – \(formatter.string(from: endOfWeek))"
+        let start = formatter.string(from: startOfWeek).lowercased()
+        let end = formatter.string(from: endOfWeek).lowercased()
+        return "\(start) – \(end)"
     }
 
     // MARK: - Data
@@ -345,7 +347,7 @@ struct ActivityView: View {
 
             // Add live session time if today and current week
             if isToday && selectedWeekOffset == 0 {
-                totalSeconds = Int(appState.todayFocusSeconds + appState.currentSessionSeconds)
+                totalSeconds = Int(appState.todayFocusSeconds)
             }
 
             days.append(DayData(
