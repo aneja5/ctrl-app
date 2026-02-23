@@ -12,14 +12,18 @@ struct CTRLTokenValidator {
     /// Validates if a scanned NFC payload is a genuine CTRL device
     static func validate(payload: String) -> (isValid: Bool, tokenID: String?) {
         guard payload.hasPrefix(tokenPrefix) else {
+            #if DEBUG
             print("[TokenValidator] ❌ Missing CTRL- prefix")
+            #endif
             return (false, nil)
         }
 
         let content = String(payload.dropFirst(tokenPrefix.count))
 
         guard let lastDashIndex = content.lastIndex(of: "-") else {
+            #if DEBUG
             print("[TokenValidator] ❌ Invalid format")
+            #endif
             return (false, nil)
         }
 
@@ -27,19 +31,25 @@ struct CTRLTokenValidator {
         let providedSignature = String(content[content.index(after: lastDashIndex)...])
 
         guard uuid.count >= 32 else {
+            #if DEBUG
             print("[TokenValidator] ❌ UUID too short")
+            #endif
             return (false, nil)
         }
 
         let expectedSignature = computeSignature(for: uuid)
 
         guard constantTimeCompare(providedSignature.lowercased(), expectedSignature.lowercased()) else {
+            #if DEBUG
             print("[TokenValidator] ❌ Signature mismatch")
+            #endif
             return (false, nil)
         }
 
         let fullTokenID = "\(tokenPrefix)\(uuid)"
+        #if DEBUG
         print("[TokenValidator] ✅ Valid ctrl: \(fullTokenID)")
+        #endif
         return (true, fullTokenID)
     }
 

@@ -9,5 +9,13 @@
 		<string>NDEF</string>
 		<string>TAG</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>in.getctrl.app.schedule-check</string>
+	</array>
 </dict>
 </plist>

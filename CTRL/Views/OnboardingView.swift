@@ -6,13 +6,10 @@ struct OnboardingView: View {
     // MARK: - Step Enum
 
     enum Step: Int, CaseIterable {
-        case splash
         case welcome
         case email
         case verify
         case screenTime
-        case modes
-        case apps
         case ready
     }
 
@@ -23,26 +20,20 @@ struct OnboardingView: View {
 
     // MARK: - Configuration
 
-    var startStep: Step = .splash
+    var startStep: Step = .welcome
 
     // MARK: - State
 
-    @State private var currentStep: Step = .splash
+    @State private var currentStep: Step = .welcome
     @State private var email: String = ""
     @State private var isLoading: Bool = false
     @State private var errorMessage: String? = nil
 
-    // Splash animation state
-    @State private var splashWordmarkOpacity: Double = 0
-
     // Verify step state
-    @State private var codeDigits: [String] = Array(repeating: "", count: 6)
+    @State private var code: String = ""
     @State private var resendCountdown: Int = 0
     @State private var codeShakeOffset: CGFloat = 0
-    @FocusState private var focusedCodeIndex: Int?
-
-    // Intent / mode name from IntentSelectionView
-    @State private var selectedModeName: String = "Focus"
+    @FocusState private var isCodeFieldFocused: Bool
 
     // MARK: - Callback
 
@@ -50,7 +41,7 @@ struct OnboardingView: View {
 
     // MARK: - Init
 
-    init(startStep: Step = .splash, onComplete: @escaping () -> Void) {
+    init(startStep: Step = .welcome, onComplete: @escaping () -> Void) {
         self.startStep = startStep
         self._currentStep = State(initialValue: startStep)
         self.onComplete = onComplete
@@ -63,13 +54,7 @@ struct OnboardingView: View {
             CTRLColors.base.ignoresSafeArea()
 
             Group {
-                #if DEBUG
-                let _ = print("[OnboardingView] body evaluated, currentStep: \(currentStep)")
-                #endif
-
                 switch currentStep {
-                case .splash:
-                    splashView
                 case .welcome:
                     welcomeView
                 case .email:
@@ -78,23 +63,11 @@ struct OnboardingView: View {
                     verifyView
                 case .screenTime:
                     ScreenTimePermissionView {
+                        #if DEBUG
                         print("[Onboarding] ScreenTimePermission completed")
+                        #endif
                         advance()
                     }
-                case .modes:
-                    IntentSelectionView { modeName in
-                        print("[Onboarding] IntentSelection chose: \(modeName)")
-                        selectedModeName = modeName
-                        advance()
-                    }
-                case .apps:
-                    AppSelectionView(
-                        modeName: selectedModeName,
-                        onBack: { goTo(.modes) },
-                        onContinue: { selection in
-                            createModeAndAdvance(name: selectedModeName, appSelection: selection)
-                        }
-                    )
                 case .ready:
                     readyView
                 }
@@ -111,7 +84,9 @@ struct OnboardingView: View {
     private func advance() {
         // Prevent double-advance from callbacks firing twice
         guard !isAdvancing else {
+            #if DEBUG
             print("[Onboarding] Already advancing, skipping duplicate call")
+            #endif
             return
         }
         isAdvancing = true
@@ -123,8 +98,40 @@ struct OnboardingView: View {
             return
         }
         errorMessage = nil
-        let nextStep = allSteps[currentIndex + 1]
+        var nextStep = allSteps[currentIndex + 1]
+
+        // Skip Screen Time permission step if already granted
+        if nextStep == .screenTime && appState.hasScreenTimePermission {
+            let skipIndex = allSteps.firstIndex(of: nextStep)!
+            if skipIndex + 1 < allSteps.count {
+                nextStep = allSteps[skipIndex + 1]
+            }
+        }
+
+        // Returning user: skip straight to home if they have previous data
+        if appState.hasPreviousData {
+            if (nextStep == .screenTime && appState.hasScreenTimePermission) || nextStep == .ready {
+                #if DEBUG
+                print("[Onboarding] Returning user — skipping to home")
+                #endif
+                onComplete()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { isAdvancing = false }
+                return
+            }
+        }
+
+        // Fresh user reaching ready: create default Focus mode
+        if nextStep == .ready && appState.modes.isEmpty {
+            let mode = BlockingMode(name: "Focus")
+            appState.addMode(mode)
+            #if DEBUG
+            print("[Onboarding] Auto-created default Focus mode")
+            #endif
+        }
+
+        #if DEBUG
         print("[Onboarding] Advancing: \(currentStep) → \(nextStep)")
+        #endif
         currentStep = nextStep
 
         // Reset after a short delay to allow future advances
@@ -136,30 +143,6 @@ struct OnboardingView: View {
     private func goTo(_ step: Step) {
         errorMessage = nil
         currentStep = step
-    }
-
-    // MARK: - Splash
-
-    private var splashView: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            Text("ctrl")
-                .font(.custom("Georgia", size: 28))
-                .foregroundColor(CTRLColors.textTertiary)
-                .tracking(3)
-                .opacity(splashWordmarkOpacity)
-
-            Spacer()
-        }
-        .onAppear {
-            withAnimation(.easeIn(duration: 0.8)) {
-                splashWordmarkOpacity = 1.0
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                advance()
-            }
-        }
     }
 
     // MARK: - Welcome
@@ -344,17 +327,43 @@ struct OnboardingView: View {
     // MARK: - Verify
 
     private var fullCode: String {
-        codeDigits.joined()
+        code
     }
 
     private var verifyView: some View {
         VStack(spacing: 0) {
-            // Wordmark at top
-            Text("ctrl")
-                .font(CTRLFonts.ritualWhisper)
-                .foregroundColor(CTRLColors.textTertiary)
-                .tracking(3)
-                .padding(.top, CTRLSpacing.xl)
+            // Top bar with back button and wordmark
+            HStack {
+                Button(action: {
+                    // Reset verify state and go back to email
+                    code = ""
+                    errorMessage = nil
+                    isLoading = false
+                    isVerifying = false
+                    goTo(.email)
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(CTRLColors.textTertiary)
+                        .frame(width: 36, height: 36)
+                }
+                .disabled(isLoading)
+
+                Spacer()
+
+                Text("ctrl")
+                    .font(CTRLFonts.ritualWhisper)
+                    .foregroundColor(CTRLColors.textTertiary)
+                    .tracking(3)
+
+                Spacer()
+
+                // Invisible spacer to balance the back button
+                Color.clear
+                    .frame(width: 36, height: 36)
+            }
+            .padding(.horizontal, CTRLSpacing.screenPadding)
+            .padding(.top, CTRLSpacing.xl)
 
             Spacer()
 
@@ -373,14 +382,58 @@ struct OnboardingView: View {
 
             // 6-digit code input
             VStack(spacing: CTRLSpacing.lg) {
+                // Digit display boxes with hidden TextField overlay
                 HStack(spacing: CTRLSpacing.xs) {
                     ForEach(0..<6, id: \.self) { index in
-                        codeDigitField(index: index)
+                        OTPDigitBox(
+                            digit: getDigit(at: index),
+                            isFocused: isCodeFieldFocused && index == code.count
+                        )
+                        .onTapGesture {
+                            isCodeFieldFocused = true
+                        }
                     }
                 }
+                .overlay(
+                    TextField("", text: $code)
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                        .focused($isCodeFieldFocused)
+                        .opacity(0.01)
+                        .onChange(of: code) { _, newValue in
+                            // Filter non-digits
+                            let filtered = newValue.filter { $0.isNumber }
+                            if filtered != newValue {
+                                code = filtered
+                                return
+                            }
+                            // Limit to 6 digits
+                            if filtered.count > 6 {
+                                code = String(filtered.prefix(6))
+                            }
+                            // Auto-submit when 6 digits entered
+                            if code.count == 6 {
+                                isCodeFieldFocused = false
+                                verifyCode()
+                            }
+                        }
+                )
                 .offset(x: codeShakeOffset)
                 .padding(.horizontal, CTRLSpacing.screenPadding)
                 .disabled(isLoading)
+
+                // Clear button
+                if !code.isEmpty {
+                    Button(action: {
+                        code = ""
+                        isCodeFieldFocused = true
+                    }) {
+                        Text("clear")
+                            .font(CTRLFonts.captionFont)
+                            .foregroundColor(CTRLColors.textTertiary)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
 
                 if let error = errorMessage {
                     Text(error)
@@ -413,75 +466,14 @@ struct OnboardingView: View {
             }
         }
         .onAppear {
-            focusedCodeIndex = 0
+            isCodeFieldFocused = true
             startResendCountdown()
         }
     }
 
-    private func codeDigitField(index: Int) -> some View {
-        TextField("", text: $codeDigits[index])
-            .font(.system(size: 28, weight: .light, design: .monospaced))
-            .foregroundColor(CTRLColors.textPrimary)
-            .tint(CTRLColors.accent)
-            .multilineTextAlignment(.center)
-            .keyboardType(.numberPad)
-            .textContentType(.oneTimeCode)
-            .focused($focusedCodeIndex, equals: index)
-            .frame(height: 56)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(CTRLColors.surface1)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(
-                        focusedCodeIndex == index ? CTRLColors.accent.opacity(0.5) : CTRLColors.border,
-                        lineWidth: focusedCodeIndex == index ? 1.5 : 1
-                    )
-            )
-            .onChange(of: codeDigits[index]) { oldValue, newValue in
-                handleDigitChange(index: index, oldValue: oldValue, newValue: newValue)
-            }
-    }
-
-    private func handleDigitChange(index: Int, oldValue: String, newValue: String) {
-        // Only allow digits
-        let filtered = newValue.filter { $0.isNumber }
-
-        if filtered.count > 1 {
-            // Pasted full code or multiple digits
-            let digits = Array(filtered.prefix(6))
-            for i in 0..<6 {
-                codeDigits[i] = i < digits.count ? String(digits[i]) : ""
-            }
-            if digits.count >= 6 {
-                focusedCodeIndex = nil
-                verifyCode()
-            } else {
-                focusedCodeIndex = digits.count
-            }
-            return
-        }
-
-        if filtered != newValue {
-            codeDigits[index] = filtered
-        }
-
-        if filtered.count == 1 {
-            // Advance to next field
-            if index < 5 {
-                focusedCodeIndex = index + 1
-            } else {
-                // Last digit filled — auto-submit
-                focusedCodeIndex = nil
-                verifyCode()
-            }
-        } else if filtered.isEmpty && oldValue.count == 1 {
-            // Deleted — go back
-            if index > 0 {
-                focusedCodeIndex = index - 1
-            }
-        }
+    private func getDigit(at index: Int) -> String {
+        guard index < code.count else { return "" }
+        return String(code[code.index(code.startIndex, offsetBy: index)])
     }
 
     @State private var isVerifying = false
@@ -492,7 +484,9 @@ struct OnboardingView: View {
 
         // Prevent double verification from paste + last-digit onChange both firing
         guard !isVerifying else {
+            #if DEBUG
             print("[Onboarding] Already verifying, skipping duplicate call")
+            #endif
             return
         }
         isVerifying = true
@@ -507,12 +501,36 @@ struct OnboardingView: View {
                     email: trimmedEmail,
                     code: code
                 )
+
+                // Set email before cloud fetch
                 await MainActor.run {
                     appState.userEmail = trimmedEmail
-                    appState.saveState()
+                }
+
+                // Fetch cloud data after successful sign-in
+                let cloudData = await CloudSyncManager.shared.fetchFromCloud()
+                if let cloudData = cloudData {
+                    let isNew = CloudSyncManager.shared.isNewDevice(cloudData: cloudData)
+
+                    // Batch all state mutations into a single MainActor.run
+                    await MainActor.run {
+                        CloudSyncManager.shared.restoreFromCloud(cloudData, into: appState)
+                        if isNew {
+                            appState.isReturningFromNewDevice = true
+                        }
+                        appState.markOnboardingComplete()
+                        isLoading = false
+                        if !isNew {
+                            onComplete()
+                        }
+                    }
+                    return
+                }
+
+                // No cloud data — first-time user, continue normal flow
+                await MainActor.run {
                     isLoading = false
                     advance()
-                    // Don't reset isVerifying — we've moved on
                 }
             } catch {
                 await MainActor.run {
@@ -545,18 +563,19 @@ struct OnboardingView: View {
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            codeDigits = Array(repeating: "", count: 6)
-            focusedCodeIndex = 0
+            code = ""
+            isCodeFieldFocused = true
         }
     }
 
     private func startResendCountdown() {
         resendCountdown = 30
-        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
-            if resendCountdown > 0 {
-                resendCountdown -= 1
-            } else {
-                timer.invalidate()
+        Task {
+            while resendCountdown > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if !Task.isCancelled {
+                    resendCountdown -= 1
+                }
             }
         }
     }
@@ -575,22 +594,6 @@ struct OnboardingView: View {
                 errorMessage = error.localizedDescription
             }
         }
-    }
-
-    private func createModeAndAdvance(name: String, appSelection: FamilyActivitySelection) {
-        // Guard against duplicate creation (SwiftUI can re-invoke callbacks)
-        guard !appState.modes.contains(where: { $0.name.lowercased() == name.lowercased() }) else {
-            print("[Onboarding] Mode '\(name)' already exists, skipping creation")
-            advance()
-            return
-        }
-
-        // Create the mode with selected apps and add it
-        let mode = BlockingMode(name: name, appSelection: appSelection)
-        appState.addMode(mode)
-        appState.saveSelectedApps(appSelection)
-
-        advance()
     }
 
     // MARK: - Ready
@@ -718,4 +721,59 @@ struct OnboardingView: View {
         .padding(.bottom, CTRLSpacing.xxl)
     }
 
+}
+
+// MARK: - OTP Digit Box
+
+private struct OTPDigitBox: View {
+    let digit: String
+    let isFocused: Bool
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(CTRLColors.surface1)
+                .frame(height: 56)
+
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(
+                    isFocused ? CTRLColors.accent.opacity(0.5) : CTRLColors.border,
+                    lineWidth: isFocused ? 1.5 : 1
+                )
+                .frame(height: 56)
+
+            if digit.isEmpty && isFocused {
+                Rectangle()
+                    .fill(CTRLColors.accent)
+                    .frame(width: 2, height: 24)
+                    .blinkingCursor()
+            } else {
+                Text(digit)
+                    .font(.system(size: 28, weight: .light, design: .monospaced))
+                    .foregroundColor(CTRLColors.textPrimary)
+            }
+        }
+    }
+}
+
+// MARK: - Blinking Cursor
+
+private extension View {
+    func blinkingCursor() -> some View {
+        modifier(BlinkingCursorModifier())
+    }
+}
+
+private struct BlinkingCursorModifier: ViewModifier {
+    @State private var isVisible = true
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isVisible ? 1 : 0)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.5).repeatForever()) {
+                    isVisible.toggle()
+                }
+            }
+    }
 }

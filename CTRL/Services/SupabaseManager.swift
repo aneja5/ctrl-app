@@ -1,6 +1,87 @@
 import Foundation
 import Supabase
 
+// MARK: - Cloud Data Models
+
+/// Data model matching the `user_data` Supabase table.
+/// Only contains cloud-safe fields (no FamilyActivitySelection).
+struct CloudUserData: Codable {
+    let id: UUID?
+    let userId: UUID
+    let email: String
+    let modeNames: [String]
+    let focusHistory: [CloudFocusEntry]
+    let emergencyUnlocksRemaining: Int
+    let emergencyResetDate: Date?
+    let deviceId: String?
+    let encryptedModesData: String?
+    let strictModeEnabled: Bool?
+    let updatedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, email
+        case userId = "user_id"
+        case modeNames = "mode_names"
+        case focusHistory = "focus_history"
+        case emergencyUnlocksRemaining = "emergency_unlocks_remaining"
+        case emergencyResetDate = "emergency_reset_date"
+        case deviceId = "device_id"
+        case encryptedModesData = "encrypted_modes_data"
+        case strictModeEnabled = "strict_mode_enabled"
+        case updatedAt = "updated_at"
+    }
+}
+
+/// For writing (upsert) — only client-controlled fields.
+/// Excludes server-generated fields (id, updated_at, created_at).
+struct CloudUserDataWrite: Codable {
+    let userId: UUID
+    let email: String
+    let modeNames: [String]
+    let focusHistory: [CloudFocusEntry]
+    let emergencyUnlocksRemaining: Int
+    let emergencyResetDate: Date?
+    let deviceId: String?
+    let encryptedModesData: String?
+    let strictModeEnabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case userId = "user_id"
+        case modeNames = "mode_names"
+        case focusHistory = "focus_history"
+        case emergencyUnlocksRemaining = "emergency_unlocks_remaining"
+        case emergencyResetDate = "emergency_reset_date"
+        case deviceId = "device_id"
+        case encryptedModesData = "encrypted_modes_data"
+        case strictModeEnabled = "strict_mode_enabled"
+    }
+}
+
+struct CloudFocusEntry: Codable {
+    let date: String
+    let totalSeconds: TimeInterval
+    let sessionCount: Int
+
+    init(date: String, totalSeconds: TimeInterval, sessionCount: Int = 0) {
+        self.date = date
+        self.totalSeconds = totalSeconds
+        self.sessionCount = sessionCount
+    }
+
+    // Backward-compatible decoder — existing cloud data lacks sessionCount
+    enum CodingKeys: String, CodingKey {
+        case date, totalSeconds, sessionCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        date = try container.decode(String.self, forKey: .date)
+        totalSeconds = try container.decode(TimeInterval.self, forKey: .totalSeconds)
+        sessionCount = try container.decodeIfPresent(Int.self, forKey: .sessionCount) ?? 0
+    }
+}
+
 /// Manages Supabase authentication via OTP (magic link / 6-digit code).
 /// Reads project URL and anon key from Config.plist — never hardcoded.
 @MainActor
@@ -47,7 +128,9 @@ final class SupabaseManager: ObservableObject {
         defer { isLoading = false }
 
         try await client.auth.signInWithOTP(email: email)
+        #if DEBUG
         print("[SupabaseManager] OTP sent to \(email)")
+        #endif
     }
 
     /// Verifies the OTP code and creates a session.
@@ -61,7 +144,9 @@ final class SupabaseManager: ObservableObject {
             type: .email
         )
         self.currentUser = session.user
+        #if DEBUG
         print("[SupabaseManager] OTP verified, user: \(session.user.id)")
+        #endif
     }
 
     /// Signs out the current user and clears local session.
@@ -71,7 +156,9 @@ final class SupabaseManager: ObservableObject {
 
         try await client.auth.signOut()
         self.currentUser = nil
+        #if DEBUG
         print("[SupabaseManager] User signed out")
+        #endif
     }
 
     /// Returns the current user, or nil if not authenticated.
@@ -81,10 +168,58 @@ final class SupabaseManager: ObservableObject {
             self.currentUser = user
             return user
         } catch {
+            #if DEBUG
             print("[SupabaseManager] No current user: \(error.localizedDescription)")
+            #endif
             self.currentUser = nil
             return nil
         }
+    }
+
+    // MARK: - Cloud Data Methods
+
+    /// Upserts user data to the `user_data` table.
+    /// Accepts `CloudUserDataWrite` which excludes server-generated fields (id, updated_at).
+    func saveUserData(_ data: CloudUserDataWrite) async throws {
+        try await client
+            .from("user_data")
+            .upsert(data, onConflict: "user_id")
+            .execute()
+
+        #if DEBUG
+        print("[SupabaseManager] User data saved for \(data.email)")
+        #endif
+    }
+
+    /// Fetches user data from `user_data` table by user_id.
+    /// Returns nil if no cloud data exists for this user.
+    func fetchUserData(userId: UUID) async throws -> CloudUserData? {
+        let response: [CloudUserData] = try await client
+            .from("user_data")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .limit(1)
+            .execute()
+            .value
+
+        #if DEBUG
+        print("[SupabaseManager] Fetched user data: \(response.first != nil ? "found" : "none")")
+        #endif
+
+        return response.first
+    }
+
+    /// Deletes all user data from the `user_data` table for the current user.
+    func deleteUserData(userId: UUID) async throws {
+        try await client
+            .from("user_data")
+            .delete()
+            .eq("user_id", value: userId.uuidString)
+            .execute()
+
+        #if DEBUG
+        print("[SupabaseManager] User data deleted for \(userId)")
+        #endif
     }
 
     // MARK: - Session Restoration
@@ -93,10 +228,14 @@ final class SupabaseManager: ObservableObject {
         do {
             let session = try await client.auth.session
             self.currentUser = session.user
+            #if DEBUG
             print("[SupabaseManager] Session restored for user: \(session.user.id)")
+            #endif
         } catch {
             self.currentUser = nil
+            #if DEBUG
             print("[SupabaseManager] No existing session")
+            #endif
         }
     }
 

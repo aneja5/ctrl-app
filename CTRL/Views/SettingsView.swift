@@ -1,17 +1,26 @@
 import SwiftUI
-import FamilyControls
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var blockingManager: BlockingManager
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var scheduleManager: ScheduleManager
 
-    @State private var showEditModeSheet = false
-    @State private var editingMode: BlockingMode? = nil
-    @State private var isAddingNewMode = false
-    @State private var showOverrideConfirm = false
-    @State private var showSignOutAlert = false
+    // Single alert state to prevent hierarchy conflicts
+    enum ActiveAlert: Identifiable {
+        case override, signOut, deleteData, strictMode
+        var id: Int {
+            switch self {
+            case .override: return 0
+            case .signOut: return 1
+            case .deleteData: return 2
+            case .strictMode: return 3
+            }
+        }
+    }
+    @State private var activeAlert: ActiveAlert? = nil
+    @State private var isDeletingData = false
     @State private var expandedFAQ: String? = nil
+    @State private var resetCountdown: String = ""
 
     var body: some View {
         NavigationStack {
@@ -27,8 +36,8 @@ struct SettingsView: View {
                     // Account
                     accountSection
 
-                    // Modes
-                    modesSection
+                    // Session
+                    sessionSection
 
                     // Override
                     overrideSection
@@ -36,53 +45,79 @@ struct SettingsView: View {
                     // FAQ
                     faqSection
 
+                    // Cloud Sync
+                    cloudSyncSection
+
                     // Support
                     supportSection
 
                     // Footer
                     footerSection
 
-                    Spacer(minLength: 40)
+                    Spacer(minLength: 80)
                 }
                 .padding(.horizontal, CTRLSpacing.screenPadding)
             }
         }
-        .sheet(isPresented: $showEditModeSheet) {
-            EditModeView(
-                mode: editingMode,
-                isNewMode: isAddingNewMode,
-                onSave: { savedMode in
-                    if isAddingNewMode {
-                        appState.addMode(savedMode)
-                    } else {
-                        appState.updateMode(savedMode)
+        .alert(
+            activeAlert == .override ? "override session" :
+            activeAlert == .signOut ? "sign out?" :
+            activeAlert == .strictMode ? "enable strict mode?" : "delete cloud data?",
+            isPresented: Binding(
+                get: { activeAlert != nil },
+                set: { if !$0 { activeAlert = nil } }
+            ),
+            presenting: activeAlert
+        ) { alert in
+            switch alert {
+            case .override:
+                Button("cancel", role: .cancel) { }
+                Button("override", role: .destructive) {
+                    if appState.useEmergencyUnlock() {
+                        let generator = UINotificationFeedbackGenerator()
+                        generator.notificationOccurred(.warning)
+                        appState.stopBlockingTimer()
+                        if blockingManager.isBlocking {
+                            blockingManager.deactivateBlocking()
+                        }
+                        if FeatureFlags.schedulesEnabled && scheduleManager.activeScheduleId != nil {
+                            scheduleManager.endActiveSession()
+                        }
                     }
-                },
-                onCancel: { }
-            )
-            .environmentObject(appState)
-            .presentationBackground(CTRLColors.base)
-        }
-        .alert("override session", isPresented: $showOverrideConfirm) {
-            Button("cancel", role: .cancel) { }
-            Button("override", role: .destructive) {
-                if appState.useEmergencyUnlock() {
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.warning)
-                    appState.stopBlockingTimer()
-                    blockingManager.deactivateBlocking()
+                }
+            case .signOut:
+                Button("cancel", role: .cancel) { }
+                Button("sign out", role: .destructive) {
+                    performSignOut()
+                }
+            case .deleteData:
+                Button("cancel", role: .cancel) { }
+                Button("delete everything", role: .destructive) {
+                    performDeleteData()
+                }
+            case .strictMode:
+                Button("cancel", role: .cancel) { }
+                Button("enable", role: .destructive) {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    appState.strictModeEnabled = true
+                    appState.saveState()
+                    Task { @MainActor in
+                        CloudSyncManager.shared.syncToCloud(appState: appState)
+                    }
                 }
             }
-        } message: {
-            Text("end session without your ctrl? \(appState.emergencyUnlocksRemaining) overrides remaining.")
-        }
-        .alert("sign out?", isPresented: $showSignOutAlert) {
-            Button("cancel", role: .cancel) { }
-            Button("sign out", role: .destructive) {
-                performSignOut()
+        } message: { alert in
+            switch alert {
+            case .override:
+                Text("end session without your ctrl? \(appState.emergencyUnlocksRemaining) overrides remaining.")
+            case .signOut:
+                Text("you'll need to sign in again. your modes and history will be kept on this device.")
+            case .deleteData:
+                Text("this will permanently delete your email and all synced data from our servers. your local modes and history will be kept on this device.")
+            case .strictMode:
+                Text("during strict mode sessions, you won't be able to delete or install apps on your device. you can still use emergency overrides. are you sure?")
             }
-        } message: {
-            Text("you'll need to sign in again. your modes and history will be kept on this device.")
         }
         .navigationBarHidden(true)
         } // NavigationStack
@@ -97,15 +132,6 @@ struct SettingsView: View {
                 .foregroundColor(CTRLColors.textPrimary)
 
             Spacer()
-
-            Button(action: { dismiss() }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(CTRLColors.textTertiary)
-                    .frame(width: 36, height: 36)
-                    .background(CTRLColors.surface1)
-                    .clipShape(Circle())
-            }
         }
     }
 
@@ -146,98 +172,71 @@ struct SettingsView: View {
                         }
                         .padding(CTRLSpacing.md)
                     }
+                    .disabled(blockingManager.isBlocking)
+                    .opacity(blockingManager.isBlocking ? 0.4 : 1.0)
                 }
             }
         }
     }
 
-    // MARK: - Modes Section
+    // MARK: - Session Section
 
-    private var modesSection: some View {
+    private var sessionSection: some View {
         VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
-            CTRLSectionHeader(title: "Modes")
+            CTRLSectionHeader(title: "Session")
 
             SurfaceCard(padding: 0, cornerRadius: CTRLSpacing.cardRadius) {
                 VStack(spacing: 0) {
-                    ForEach(Array(appState.modes.enumerated()), id: \.element.id) { index, mode in
-                        modeRow(mode: mode)
+                    // Strict mode toggle row
+                    HStack {
+                        VStack(alignment: .leading, spacing: CTRLSpacing.micro) {
+                            Text("strict mode")
+                                .font(CTRLFonts.bodyFont)
+                                .foregroundColor(CTRLColors.textPrimary)
 
-                        if index < appState.modes.count - 1 {
-                            CTRLDivider()
+                            Text("prevents app deletion and installation during sessions")
+                                .font(CTRLFonts.bodySmall)
+                                .foregroundColor(CTRLColors.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                    }
 
-                    if appState.modes.count < 6 {
+                        Spacer()
+
+                        Toggle("", isOn: Binding(
+                            get: { appState.strictModeEnabled },
+                            set: { newValue in
+                                if newValue {
+                                    activeAlert = .strictMode
+                                } else {
+                                    let generator = UIImpactFeedbackGenerator(style: .light)
+                                    generator.impactOccurred()
+                                    appState.strictModeEnabled = false
+                                    appState.saveState()
+                                    Task { @MainActor in
+                                        CloudSyncManager.shared.syncToCloud(appState: appState)
+                                    }
+                                }
+                            }
+                        ))
+                        .labelsHidden()
+                        .tint(CTRLColors.accent)
+                        .disabled(blockingManager.isBlocking)
+                    }
+                    .padding(CTRLSpacing.md)
+                    .opacity(blockingManager.isBlocking ? 0.5 : 1.0)
+
+                    if blockingManager.isBlocking {
                         CTRLDivider()
 
-                        addModeRow
+                        Text("can't change during an active session")
+                            .font(CTRLFonts.micro)
+                            .foregroundColor(CTRLColors.textTertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, CTRLSpacing.md)
+                            .padding(.vertical, CTRLSpacing.sm)
                     }
                 }
             }
-        }
-    }
-
-    private var isActiveModeLocked: Bool {
-        blockingManager.isBlocking
-    }
-
-    private func modeRow(mode: BlockingMode) -> some View {
-        let isActive = appState.activeModeId == mode.id
-        let editDisabled = isActive && isActiveModeLocked
-
-        return Button(action: {
-            if !editDisabled {
-                isAddingNewMode = false
-                editingMode = mode
-                showEditModeSheet = true
-            }
-        }) {
-            HStack {
-                // Mode Info
-                VStack(alignment: .leading, spacing: CTRLSpacing.micro) {
-                    Text(mode.name.lowercased())
-                        .font(CTRLFonts.bodyFont)
-                        .foregroundColor(isActive ? CTRLColors.textPrimary : CTRLColors.textSecondary)
-
-                    Text("\(mode.appCount) \(mode.appCount == 1 ? "app" : "apps")")
-                        .font(CTRLFonts.micro)
-                        .tracking(1)
-                        .foregroundColor(CTRLColors.textTertiary)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(editDisabled ? CTRLColors.textTertiary.opacity(0.3) : CTRLColors.textTertiary)
-            }
-            .padding(.horizontal, CTRLSpacing.md)
-            .frame(height: 68)
-            .contentShape(Rectangle())
-        }
-        .disabled(editDisabled)
-    }
-
-    private var addModeRow: some View {
-        Button(action: {
-            isAddingNewMode = true
-            editingMode = nil
-            showEditModeSheet = true
-        }) {
-            HStack {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(CTRLColors.textTertiary)
-
-                Text("add mode")
-                    .font(CTRLFonts.bodyFont)
-                    .foregroundColor(CTRLColors.textTertiary)
-                    .padding(.leading, CTRLSpacing.sm)
-
-                Spacer()
-            }
-            .padding(.horizontal, CTRLSpacing.md)
-            .frame(height: 56)
         }
     }
 
@@ -262,10 +261,29 @@ struct SettingsView: View {
                             .monospacedDigit()
                     }
 
-                    if blockingManager.isBlocking && !appState.strictModeEnabled && appState.emergencyUnlocksRemaining > 0 {
+                    if appState.emergencyUnlocksRemaining < 5 {
+                        HStack {
+                            Text("resets in")
+                                .font(CTRLFonts.bodyFont)
+                                .foregroundColor(CTRLColors.textSecondary)
+
+                            Spacer()
+
+                            Text(resetCountdown)
+                                .font(CTRLFonts.bodySmall)
+                                .foregroundColor(CTRLColors.textTertiary)
+                                .monospacedDigit()
+                        }
+                        .onAppear { updateResetCountdown() }
+                        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+                            updateResetCountdown()
+                        }
+                    }
+
+                    if (blockingManager.isBlocking || (FeatureFlags.schedulesEnabled && scheduleManager.activeScheduleId != nil)) && appState.emergencyUnlocksRemaining > 0 {
                         CTRLDivider()
 
-                        Button(action: { showOverrideConfirm = true }) {
+                        Button(action: { activeAlert = .override }) {
                             Text("end session without ctrl")
                                 .font(CTRLFonts.bodySmall)
                                 .foregroundColor(CTRLColors.accent)
@@ -275,6 +293,20 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func updateResetCountdown() {
+        guard let resetDate = appState.nextOverrideResetDate() else {
+            resetCountdown = ""
+            return
+        }
+
+        let components = Calendar.current.dateComponents([.day, .hour, .minute], from: Date(), to: resetDate)
+        let d = components.day ?? 0
+        let h = components.hour ?? 0
+        let m = components.minute ?? 0
+
+        resetCountdown = String(format: "%02dd %02dh %02dm", d, h, m)
     }
 
     // MARK: - FAQ Section
@@ -320,7 +352,7 @@ struct SettingsView: View {
                     faqRow(
                         id: "override",
                         question: "What are emergency overrides?",
-                        answer: "You have 5 emergency unlocks each month in case something urgent comes up. They reset on the 1st. Use them only when you really need to."
+                        answer: "You have 5 emergency unlocks each month in case something urgent comes up. They reset monthly from the day you signed up. Use them only when you really need to."
                     )
 
                     CTRLDivider()
@@ -368,6 +400,67 @@ struct SettingsView: View {
                     .padding(.horizontal, CTRLSpacing.md)
                     .padding(.bottom, CTRLSpacing.md)
                     .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: - Cloud Sync Section
+
+    private var cloudSyncSection: some View {
+        VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
+            CTRLSectionHeader(title: "Cloud Sync")
+
+            SurfaceCard(padding: 0, cornerRadius: CTRLSpacing.cardRadius) {
+                VStack(spacing: 0) {
+                    // What syncs
+                    VStack(alignment: .leading, spacing: CTRLSpacing.xs) {
+                        Text("synced across devices")
+                            .font(CTRLFonts.bodyFont)
+                            .foregroundColor(CTRLColors.textSecondary)
+
+                        Text("mode names, focus history, emergency overrides, app selections (encrypted)")
+                            .font(CTRLFonts.bodySmall)
+                            .foregroundColor(CTRLColors.textTertiary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(CTRLSpacing.md)
+
+                    CTRLDivider()
+
+                    // Encryption explanation
+                    VStack(alignment: .leading, spacing: CTRLSpacing.xs) {
+                        Text("end-to-end encrypted")
+                            .font(CTRLFonts.bodyFont)
+                            .foregroundColor(CTRLColors.textSecondary)
+
+                        Text("your app selections are encrypted on-device before syncing — we never see your app list")
+                            .font(CTRLFonts.bodySmall)
+                            .foregroundColor(CTRLColors.textTertiary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(CTRLSpacing.md)
+
+                    CTRLDivider()
+
+                    // Delete button
+                    Button(action: { activeAlert = .deleteData }) {
+                        HStack {
+                            Text("delete my email & data")
+                                .font(CTRLFonts.bodyFont)
+                                .foregroundColor(CTRLColors.destructive)
+
+                            Spacer()
+
+                            if isDeletingData {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: CTRLColors.destructive))
+                            }
+                        }
+                        .padding(CTRLSpacing.md)
+                    }
+                    .disabled(isDeletingData || blockingManager.isBlocking)
+                    .opacity(blockingManager.isBlocking ? 0.4 : 1.0)
+                }
             }
         }
     }
@@ -467,7 +560,7 @@ struct SettingsView: View {
     // MARK: - Actions
 
     private func signOut() {
-        showSignOutAlert = true
+        activeAlert = .signOut
     }
 
     private func performSignOut() {
@@ -483,7 +576,32 @@ struct SettingsView: View {
                     // Modes, focus history, app selections remain intact
                 }
             } catch {
+                #if DEBUG
                 print("[Settings] Sign out failed: \(error)")
+                #endif
+            }
+        }
+    }
+
+    private func performDeleteData() {
+        isDeletingData = true
+        Task {
+            do {
+                try await CloudSyncManager.shared.deleteCloudData()
+                try await SupabaseManager.shared.signOut()
+                await MainActor.run {
+                    isDeletingData = false
+                    appState.userEmail = nil
+                    appState.hasCompletedOnboarding = false
+                    appState.saveState()
+                }
+            } catch {
+                await MainActor.run {
+                    isDeletingData = false
+                }
+                #if DEBUG
+                print("[Settings] Delete data failed: \(error)")
+                #endif
             }
         }
     }

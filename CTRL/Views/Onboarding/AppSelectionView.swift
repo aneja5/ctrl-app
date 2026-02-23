@@ -6,7 +6,7 @@ struct AppSelectionView: View {
     var onBack: (() -> Void)? = nil
     var onContinue: (FamilyActivitySelection) -> Void
 
-    @State private var selection = FamilyActivitySelection()
+    @State private var selection = FamilyActivitySelection(includeEntireCategory: true)
     @State private var showPicker = false
 
     var body: some View {
@@ -60,9 +60,9 @@ struct AppSelectionView: View {
                             .font(.system(size: 64, weight: .light))
                             .foregroundColor(CTRLColors.textPrimary)
 
-                        Text(appCount == 1 ? "app selected" : "apps selected")
-                            .font(.system(size: 15))
-                            .foregroundColor(CTRLColors.textTertiary)
+                        Text(selection.displayCount)
+                            .font(CTRLFonts.captionFont)
+                            .foregroundColor(CTRLColors.textSecondary)
                     } else {
                         Text("no apps selected yet")
                             .font(.system(size: 15))
@@ -126,9 +126,24 @@ struct AppSelectionView: View {
             }
         }
         .familyActivityPicker(isPresented: $showPicker, selection: $selection)
+        .onChange(of: selection) { _, newSelection in
+            #if DEBUG
+            print("=== CTRL APP SELECTION DEBUG ===")
+            print("includeEntireCategory: \(newSelection.includeEntireCategory)")
+            print("applicationTokens count: \(newSelection.applicationTokens.count)")
+            print("categoryTokens count: \(newSelection.categoryTokens.count)")
+            print("applicationTokens: \(newSelection.applicationTokens)")
+            print("categoryTokens: \(newSelection.categoryTokens)")
+            print("================================")
+            #endif
+        }
     }
 
     private var appCount: Int {
-        selection.applicationTokens.count + selection.categoryTokens.count
+        let apps = selection.applicationTokens.count
+        let cats = selection.categoryTokens.count
+        // When includeEntireCategory works, categories expand into applicationTokens
+        // so apps already has the full count. Fallback to cats when expansion didn't happen.
+        return cats > 0 && apps == 0 ? cats : apps
     }
 }

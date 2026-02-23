@@ -5,28 +5,87 @@ struct ModeSelectionSheet: View {
     @EnvironmentObject var blockingManager: BlockingManager
     @Environment(\.dismiss) private var dismiss
 
+    /// The mode ID currently in use during a session (nil if not in session).
+    /// This mode can't be selected or edited — only viewed.
+    var lockedModeId: UUID? = nil
+    var onEditMode: ((BlockingMode) -> Void)? = nil
+    var onCreateMode: (() -> Void)? = nil
+
+    private var isInSession: Bool { lockedModeId != nil }
+
     var body: some View {
         ZStack {
             CTRLColors.surface1.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: CTRLSpacing.lg) {
                 // Header
-                Text("select mode")
-                    .font(CTRLFonts.h2)
-                    .foregroundColor(CTRLColors.textPrimary)
-                    .padding(.horizontal, CTRLSpacing.screenPadding)
-                    .padding(.top, CTRLSpacing.md)
+                HStack {
+                    Text("select mode")
+                        .font(CTRLFonts.h2)
+                        .foregroundColor(CTRLColors.textPrimary)
+
+                    Spacer()
+
+                    Button(action: { dismiss() }) {
+                        Text("done")
+                            .font(CTRLFonts.bodyFont)
+                            .fontWeight(.medium)
+                            .foregroundColor(CTRLColors.accent)
+                    }
+                }
+                .padding(.horizontal, CTRLSpacing.screenPadding)
+                .padding(.top, CTRLSpacing.md)
 
                 // Mode List
                 VStack(spacing: CTRLSpacing.sm) {
                     ForEach(appState.modes) { mode in
+                        let isThisModeLocked = mode.id == lockedModeId
                         ModeCard(
                             mode: mode,
                             isSelected: appState.activeModeId == mode.id,
+                            isLocked: isThisModeLocked,
+                            selectionDisabled: isInSession,
                             onTap: {
-                                selectMode(mode)
+                                if !isInSession {
+                                    selectMode(mode)
+                                }
+                            },
+                            onEdit: {
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    onEditMode?(mode)
+                                }
                             }
                         )
+                    }
+
+                    // Create mode row
+                    if appState.modes.count < AppState.maxModes {
+                        Button(action: {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                onCreateMode?()
+                            }
+                        }) {
+                            HStack(spacing: CTRLSpacing.sm) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(CTRLColors.textTertiary)
+
+                                Text("create mode")
+                                    .font(CTRLFonts.bodyFont)
+                                    .foregroundColor(CTRLColors.textTertiary)
+
+                                Spacer()
+                            }
+                            .padding(.horizontal, CTRLSpacing.md)
+                            .frame(height: 56)
+                            .background(
+                                RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
+                                    .fill(CTRLColors.surface2.opacity(0.3))
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, CTRLSpacing.screenPadding)
@@ -53,50 +112,62 @@ struct ModeSelectionSheet: View {
 struct ModeCard: View {
     let mode: BlockingMode
     let isSelected: Bool
+    let isLocked: Bool          // This specific mode is in use (view-only)
+    var selectionDisabled: Bool = false  // All mode selection is disabled (in session)
     let onTap: () -> Void
+    var onEdit: (() -> Void)? = nil
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 0) {
-                // Bronze indicator bar (only when selected)
-                Rectangle()
-                    .fill(isSelected ? CTRLColors.accent.opacity(0.7) : Color.clear)
-                    .frame(width: 3)
-                    .cornerRadius(1.5)
+        HStack(spacing: 0) {
+            // Mode info (tappable for selection)
+            Button(action: onTap) {
+                HStack(spacing: CTRLSpacing.md) {
+                    // Mode name
+                    Text(mode.name.lowercased())
+                        .font(CTRLFonts.bodyFont)
+                        .fontWeight(isSelected ? .medium : .regular)
+                        .foregroundColor(isSelected ? CTRLColors.textPrimary : CTRLColors.textSecondary)
 
-                // Content
-                Text(mode.name.lowercased())
-                    .font(CTRLFonts.bodyFont)
-                    .fontWeight(isSelected ? .medium : .regular)
-                    .foregroundColor(isSelected ? CTRLColors.textPrimary : CTRLColors.textSecondary)
-                    .padding(.leading, CTRLSpacing.md)
+                    Spacer()
 
-                Spacer()
+                    // Warning icon for modes needing re-selection
+                    if mode.needsReselection {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.orange.opacity(0.8))
+                    }
 
-                // App count
-                Text("\(mode.appCount) \(mode.appCount == 1 ? "APP" : "APPS")")
-                    .font(CTRLFonts.captionFont)
-                    .tracking(1)
-                    .foregroundColor(CTRLColors.textTertiary)
-                    .padding(.trailing, CTRLSpacing.md)
+                    // App count
+                    Text(mode.appSelection.displayCount)
+                        .font(CTRLFonts.captionFont)
+                        .tracking(1)
+                        .foregroundColor(CTRLColors.textTertiary)
+                }
+                .padding(.leading, CTRLSpacing.md)
             }
-            .frame(height: 56)
-            .background(
-                RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
-                    .fill(isSelected ? CTRLColors.surface2 : CTRLColors.surface2.opacity(0.5))
-            )
+            .buttonStyle(PlainButtonStyle())
+            .disabled(selectionDisabled)
+
+            // Edit/view icon
+            if let onEdit = onEdit {
+                Button(action: onEdit) {
+                    Image(systemName: isLocked ? "eye" : "pencil")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(CTRLColors.textTertiary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
-        .buttonStyle(PlainButtonStyle())
-    }
-
-}
-
-// MARK: - Preview
-
-struct ModeSelectionSheet_Previews: PreviewProvider {
-    static var previews: some View {
-        ModeSelectionSheet()
-            .environmentObject(AppState.shared)
-            .environmentObject(BlockingManager())
+        .frame(height: 56)
+        .padding(.trailing, CTRLSpacing.xs)
+        .background(
+            RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
+                .fill(isSelected ? CTRLColors.accent.opacity(0.1) : CTRLColors.surface2.opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
+                .stroke(isSelected ? CTRLColors.accent.opacity(0.2) : Color.clear, lineWidth: 1)
+        )
     }
 }

@@ -59,7 +59,9 @@ class NFCManager: NSObject, ObservableObject {
 extension NFCManager: NFCNDEFReaderSessionDelegate {
 
     func readerSessionDidBecomeActive(_ session: NFCNDEFReaderSession) {
+        #if DEBUG
         print("NFC session became active")
+        #endif
     }
 
     func readerSession(_ session: NFCNDEFReaderSession, didInvalidateWithError error: Error) {

@@ -6,93 +6,103 @@ struct ScreenTimePermissionView: View {
 
     @State private var isRequestingPermission = false
     @State private var permissionDenied = false
+    @State private var alreadyGranted = false
 
     var body: some View {
         ZStack {
             CTRLColors.base.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Wordmark
-                Text("ctrl")
-                    .font(.custom("Georgia", size: 20))
-                    .foregroundColor(CTRLColors.textTertiary)
-                    .tracking(2)
-                    .padding(.top, 60)
+            if !alreadyGranted {
+                VStack(spacing: 0) {
+                    // Wordmark
+                    Text("ctrl")
+                        .font(.custom("Georgia", size: 20))
+                        .foregroundColor(CTRLColors.textTertiary)
+                        .tracking(2)
+                        .padding(.top, 60)
 
-                Spacer()
-                    .frame(height: 40)
+                    Spacer()
+                        .frame(height: 40)
 
-                // Title
-                VStack(spacing: 8) {
-                    Text("connect to")
-                        .font(.custom("Georgia", size: 32))
-                        .foregroundColor(CTRLColors.textPrimary)
+                    // Title
+                    VStack(spacing: 8) {
+                        Text("connect to")
+                            .font(.custom("Georgia", size: 32))
+                            .foregroundColor(CTRLColors.textPrimary)
 
-                    Text("screen time")
-                        .font(.custom("Georgia", size: 32))
-                        .foregroundColor(CTRLColors.textPrimary)
-                }
-
-                Spacer()
-                    .frame(height: 40)
-
-                // Info cards
-                VStack(spacing: 16) {
-                    infoCard(
-                        icon: "gearshape",
-                        title: "what this enables",
-                        description: "screen time lets ctrl pause distracting apps when you lock in. you pick which ones. we just enforce your boundaries."
-                    )
-
-                    infoCard(
-                        icon: "lock.shield",
-                        title: "your privacy",
-                        description: "we never see your apps or how you use them. everything stays on your device. always. no exceptions."
-                    )
-
-                    infoCard(
-                        icon: "sparkles",
-                        title: "how it works",
-                        description: "tap your ctrl to lock in. tap again to unlock. simple physical boundaries."
-                    )
-                }
-                .padding(.horizontal, 20)
-
-                Spacer()
-
-                // Button
-                VStack(spacing: 12) {
-                    Button(action: requestPermission) {
-                        Text(isRequestingPermission ? "connecting..." : "allow access")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(CTRLColors.base)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .background(CTRLColors.accent)
-                            .cornerRadius(16)
+                        Text("screen time")
+                            .font(.custom("Georgia", size: 32))
+                            .foregroundColor(CTRLColors.textPrimary)
                     }
-                    .disabled(isRequestingPermission)
 
-                    if permissionDenied {
-                        Text("no rush. you can always enable this in settings.")
-                            .font(.system(size: 13))
-                            .foregroundColor(CTRLColors.textTertiary)
-                            .multilineTextAlignment(.center)
+                    Spacer()
+                        .frame(height: 40)
 
-                        Button(action: { onContinue() }) {
-                            Text("continue")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(CTRLColors.accent)
+                    // Info cards
+                    VStack(spacing: 16) {
+                        infoCard(
+                            icon: "gearshape",
+                            title: "what this enables",
+                            description: "screen time lets ctrl pause distracting apps when you lock in. you pick which ones. we just enforce your boundaries."
+                        )
+
+                        infoCard(
+                            icon: "lock.shield",
+                            title: "your privacy",
+                            description: "we never see your apps or how you use them. everything stays on your device. always. no exceptions."
+                        )
+
+                        infoCard(
+                            icon: "sparkles",
+                            title: "how it works",
+                            description: "tap your ctrl to lock in. tap again to unlock. simple physical boundaries."
+                        )
+                    }
+                    .padding(.horizontal, 20)
+
+                    Spacer()
+
+                    // Button
+                    VStack(spacing: 12) {
+                        Button(action: requestPermission) {
+                            Text(isRequestingPermission ? "connecting..." : "allow access")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(CTRLColors.base)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(CTRLColors.accent)
+                                .cornerRadius(16)
                         }
-                        .buttonStyle(PlainButtonStyle())
-                    } else {
-                        Text("you'll see a quick apple prompt next")
-                            .font(.system(size: 13))
-                            .foregroundColor(CTRLColors.textTertiary)
+                        .disabled(isRequestingPermission)
+
+                        if permissionDenied {
+                            Text("no rush. you can always enable this in settings.")
+                                .font(.system(size: 13))
+                                .foregroundColor(CTRLColors.textTertiary)
+                                .multilineTextAlignment(.center)
+
+                            Button(action: { onContinue() }) {
+                                Text("continue")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(CTRLColors.accent)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        } else {
+                            Text("you'll see a quick apple prompt next")
+                                .font(.system(size: 13))
+                                .foregroundColor(CTRLColors.textTertiary)
+                        }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
+            }
+        }
+        .onAppear {
+            // Skip this screen entirely if permission is already granted
+            if AuthorizationCenter.shared.authorizationStatus == .approved {
+                alreadyGranted = true
+                onContinue()
             }
         }
     }

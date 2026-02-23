@@ -161,8 +161,30 @@ struct SignInOnlyView: View {
                     }
                 } else {
                     try await SupabaseManager.shared.verifyOTP(email: email, code: code)
+
+                    // Set email immediately
                     await MainActor.run {
                         appState.userEmail = email
+                        appState.saveState()
+                    }
+
+                    // Fetch cloud data after successful sign-in
+                    let cloudData = await CloudSyncManager.shared.fetchFromCloud()
+                    if let cloudData = cloudData {
+                        await MainActor.run {
+                            CloudSyncManager.shared.restoreFromCloud(cloudData, into: appState)
+                        }
+                        if CloudSyncManager.shared.isNewDevice(cloudData: cloudData) {
+                            await MainActor.run {
+                                appState.isReturningFromNewDevice = true
+                                isLoading = false
+                                onComplete()
+                            }
+                            return
+                        }
+                    }
+
+                    await MainActor.run {
                         isLoading = false
                         onComplete()
                     }

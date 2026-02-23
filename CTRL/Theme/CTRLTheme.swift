@@ -141,7 +141,7 @@ struct CTRLSpacing {
     static let cardPadding: CGFloat = 20
     static let cardRadius: CGFloat = 20
     static let buttonRadius: CGFloat = 16
-    static let buttonHeight: CGFloat = 56
+    static let buttonHeight: CGFloat = 60
 }
 
 // MARK: - Surface Card Component (replaces GlassCard)
@@ -222,7 +222,7 @@ struct CTRLPrimaryButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
                     .stroke(isActive ? Color.clear : CTRLColors.border, lineWidth: 1)
             )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
@@ -271,6 +271,15 @@ struct CTRLGhostButtonStyle: ButtonStyle {
             .font(CTRLFonts.bodySmall)
             .foregroundColor(CTRLColors.textSecondary)
             .opacity(configuration.isPressed ? 0.6 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct ModeSelectorButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }

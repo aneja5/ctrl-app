@@ -2,6 +2,11 @@ import SwiftUI
 import Combine
 import FamilyControls
 
+enum SessionStartMethod: String, Codable {
+    case nfc
+    case manual
+}
+
 class AppState: ObservableObject {
 
     // MARK: - Singleton
@@ -26,6 +31,9 @@ class AppState: ObservableObject {
         static let userEmail = "ctrl_user_email"
         static let sessionStartTime = "ctrl_session_start_time"
         static let isInSession = "ctrl_is_in_session"
+        static let schedulesData = "ctrl_schedules_data"
+        static let sessionStartMethod = "ctrl_session_start_method"
+        static let registrationDate = "ctrl_registration_date"
     }
 
     // MARK: - Persistence
@@ -38,7 +46,7 @@ class AppState: ObservableObject {
 
     @Published var isAuthorized: Bool = false
     @Published var isBlocking: Bool = false
-    @Published var selectedApps: FamilyActivitySelection = FamilyActivitySelection()
+    @Published var selectedApps: FamilyActivitySelection = FamilyActivitySelection(includeEntireCategory: true)
     @Published var modes: [BlockingMode] = [] {
         didSet {
             #if DEBUG
@@ -58,8 +66,12 @@ class AppState: ObservableObject {
     @Published var strictModeEnabled: Bool = false
     @Published var hasCompletedOnboarding: Bool = false
     @Published var userEmail: String? = nil
+    @Published var isReturningFromNewDevice: Bool = false  // Transient — not persisted
+    @Published var showReselectionAlert: Bool = false  // Transient — fires on launch if stale modes exist
     @Published var isInSession: Bool = false
+    @Published var sessionStartMethod: SessionStartMethod = .nfc
     @Published var elapsedSeconds: Int = 0
+    @Published var schedules: [FocusSchedule] = []
     @Published var sessionStartTime: Date? {
         didSet {
             if !isLoadingState {
@@ -68,9 +80,15 @@ class AppState: ObservableObject {
         }
     }
     var lastEmergencyResetDate: Date?
+    var registrationDate: Date?
     var blockingStartDate: Date? = nil
     var focusDate: Date? = nil
     private var timer: Timer?
+
+    /// Modes that were saved before the includeEntireCategory fix and need re-selection.
+    var modesNeedingReselection: [BlockingMode] {
+        modes.filter { $0.needsReselection }
+    }
 
     static let maxModes = 6
 
@@ -101,7 +119,9 @@ class AppState: ObservableObject {
             self.defaults = suiteDefaults
         } else {
             self.defaults = UserDefaults.standard
+            #if DEBUG
             print("[AppState] WARNING: App Group unavailable, falling back to standard UserDefaults")
+            #endif
         }
 
         // Detect fresh install BEFORE loading state
@@ -147,6 +167,12 @@ class AppState: ObservableObject {
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.debouncedSave() }
             .store(in: &cancellables)
+
+        $schedules
+            .dropFirst()
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.debouncedSave() }
+            .store(in: &cancellables)
     }
 
     // MARK: - State Persistence
@@ -163,7 +189,8 @@ class AppState: ObservableObject {
 
         if let data = defaults.data(forKey: Keys.selectedApps),
            let selection = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) {
-            selectedApps = selection
+            // Re-apply includeEntireCategory which is lost during deserialization
+            selectedApps = selection.withIncludeEntireCategory()
         }
 
         // Load modes
@@ -180,6 +207,20 @@ class AppState: ObservableObject {
                 return true
             }
             modes = uniqueModes
+
+            // Migration: write mode tokens to shared storage for extension access
+            for mode in uniqueModes {
+                writeModeTokenToShared(mode)
+            }
+
+            // Migration: detect modes saved before includeEntireCategory fix
+            if uniqueModes.contains(where: { $0.needsReselection }) {
+                showReselectionAlert = true
+                #if DEBUG
+                let staleNames = uniqueModes.filter { $0.needsReselection }.map { $0.name }
+                print("[AppState] Migration: modes need re-selection: \(staleNames)")
+                #endif
+            }
         }
 
         // Load active mode ID
@@ -200,6 +241,12 @@ class AppState: ObservableObject {
             emergencyUnlocksRemaining = 5
         }
         lastEmergencyResetDate = defaults.object(forKey: Keys.emergencyResetDate) as? Date
+        registrationDate = defaults.object(forKey: Keys.registrationDate) as? Date
+        // Backfill for existing users who onboarded before registrationDate was tracked
+        if registrationDate == nil && hasCompletedOnboarding {
+            registrationDate = Date()
+            defaults.set(registrationDate, forKey: Keys.registrationDate)
+        }
         totalBlockedSeconds = defaults.double(forKey: Keys.totalBlockedSeconds)
         focusDate = defaults.object(forKey: Keys.focusDate) as? Date
         if let data = defaults.data(forKey: Keys.focusHistory),
@@ -219,6 +266,12 @@ class AppState: ObservableObject {
 
         // Load session state
         isInSession = defaults.bool(forKey: Keys.isInSession)
+        if let methodString = defaults.string(forKey: Keys.sessionStartMethod),
+           let method = SessionStartMethod(rawValue: methodString) {
+            sessionStartMethod = method
+        } else {
+            sessionStartMethod = .nfc
+        }
 
         let startTimeInterval = defaults.double(forKey: Keys.sessionStartTime)
         if startTimeInterval > 0 {
@@ -227,11 +280,22 @@ class AppState: ObservableObject {
             sessionStartTime = nil
         }
 
+        // Load schedules
+        if let data = defaults.data(forKey: Keys.schedulesData),
+           let loadedSchedules = try? JSONDecoder().decode([FocusSchedule].self, from: data) {
+            schedules = loadedSchedules
+        }
+
         checkAndResetDailyFocusTime()
         checkAndResetMonthlyAllowance()
 
         #if DEBUG
         print("[AppState] loadState — email: \(userEmail ?? "nil"), onboarded: \(hasCompletedOnboarding), modes: \(modes.count)")
+        for mode in modes {
+            let appCount = mode.appSelection.applicationTokens.count
+            let catCount = mode.appSelection.categoryTokens.count
+            print("[AppState]   Loaded mode '\(mode.name)' with \(appCount) apps, \(catCount) categories")
+        }
         #endif
     }
 
@@ -242,10 +306,11 @@ class AppState: ObservableObject {
     /// Debounced save — coalesces rapid changes into a single write
     private func debouncedSave() {
         saveWorkItem?.cancel()
-        saveWorkItem = DispatchWorkItem { [weak self] in
+        let workItem = DispatchWorkItem { [weak self] in
             self?.saveState()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: saveWorkItem!)
+        saveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
     }
 
     func saveState() {
@@ -271,6 +336,9 @@ class AppState: ObservableObject {
         if let resetDate = lastEmergencyResetDate {
             defaults.set(resetDate, forKey: Keys.emergencyResetDate)
         }
+        if let regDate = registrationDate {
+            defaults.set(regDate, forKey: Keys.registrationDate)
+        }
         defaults.set(totalBlockedSeconds, forKey: Keys.totalBlockedSeconds)
         if let date = focusDate {
             defaults.set(date, forKey: Keys.focusDate)
@@ -288,8 +356,14 @@ class AppState: ObservableObject {
         defaults.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding)
         defaults.set(userEmail, forKey: Keys.userEmail)
 
+        // Save schedules
+        if let data = try? JSONEncoder().encode(schedules) {
+            defaults.set(data, forKey: Keys.schedulesData)
+        }
+
         // Save session state
         defaults.set(isInSession, forKey: Keys.isInSession)
+        defaults.set(sessionStartMethod.rawValue, forKey: Keys.sessionStartMethod)
         if let startTime = sessionStartTime {
             defaults.set(startTime.timeIntervalSince1970, forKey: Keys.sessionStartTime)
         } else {
@@ -300,6 +374,11 @@ class AppState: ObservableObject {
 
         #if DEBUG
         print("[AppState] saveState — modes: \(modes.count), activeMode: \(activeMode?.name ?? "nil")")
+        for mode in modes {
+            let appCount = mode.appSelection.applicationTokens.count
+            let catCount = mode.appSelection.categoryTokens.count
+            print("[AppState]   Saving mode '\(mode.name)' with \(appCount) apps, \(catCount) categories")
+        }
         #endif
     }
 
@@ -327,17 +406,46 @@ class AppState: ObservableObject {
 
     // MARK: - Emergency Unlock
 
+    /// Returns the next reset date based on the user's registration day-of-month.
+    /// For example, if the user registered on the 15th, overrides reset on the 15th of each month.
+    func nextOverrideResetDate() -> Date? {
+        let calendar = Calendar.current
+        let now = Date()
+        let regDay = registrationDate.map { calendar.component(.day, from: $0) } ?? 1
+
+        // Try the registration day in the current month
+        var components = calendar.dateComponents([.year, .month], from: now)
+        components.day = min(regDay, calendar.range(of: .day, in: .month, for: now)?.count ?? 28)
+
+        if let candidate = calendar.date(from: components), candidate > now {
+            return candidate
+        }
+
+        // Already passed this month — use next month
+        guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: now) else { return nil }
+        components = calendar.dateComponents([.year, .month], from: nextMonth)
+        components.day = min(regDay, calendar.range(of: .day, in: .month, for: nextMonth)?.count ?? 28)
+        return calendar.date(from: components)
+    }
+
     func checkAndResetMonthlyAllowance() {
         let calendar = Calendar.current
         let now = Date()
 
         if let lastReset = lastEmergencyResetDate {
-            if !calendar.isDate(lastReset, equalTo: now, toGranularity: .month) {
+            let regDay = registrationDate.map { calendar.component(.day, from: $0) } ?? 1
+
+            // Build the reset date for the current month
+            var components = calendar.dateComponents([.year, .month], from: now)
+            components.day = min(regDay, calendar.range(of: .day, in: .month, for: now)?.count ?? 28)
+
+            if let resetThisMonth = calendar.date(from: components),
+               now >= resetThisMonth && lastReset < resetThisMonth {
                 emergencyUnlocksRemaining = 5
                 lastEmergencyResetDate = now
                 saveState()
                 #if DEBUG
-                print("[AppState] Monthly emergency unlocks reset to 5")
+                print("[AppState] Monthly emergency unlocks reset to 5 (registration-based)")
                 #endif
             }
         } else {
@@ -350,6 +458,7 @@ class AppState: ObservableObject {
         if emergencyUnlocksRemaining > 0 {
             emergencyUnlocksRemaining -= 1
             saveState()
+            Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
             #if DEBUG
             print("[AppState] Emergency unlock used, remaining: \(emergencyUnlocksRemaining)")
             #endif
@@ -366,8 +475,9 @@ class AppState: ObservableObject {
 
         if let lastDate = focusDate {
             if !calendar.isDateInToday(lastDate) {
-                // Archive previous day's total to history
-                if totalBlockedSeconds > 0 {
+                // Archive previous day's total to history.
+                // Skip if a session is active — logSessionAcrossDays will handle it when the session ends.
+                if totalBlockedSeconds > 0 && !isInSession {
                     let dateKey = DailyFocusEntry.dateFormatter.string(from: lastDate)
                     archiveFocusEntry(date: dateKey, seconds: totalBlockedSeconds)
                 }
@@ -376,7 +486,7 @@ class AppState: ObservableObject {
                 trimOldHistory()
                 saveState()
                 #if DEBUG
-                print("[AppState] Daily focus time reset")
+                print("[AppState] Daily focus time reset\(isInSession ? " (active session — skipped archive, will split on end)" : "")")
                 #endif
             }
         } else {
@@ -385,9 +495,10 @@ class AppState: ObservableObject {
         }
     }
 
-    func startBlockingTimer() {
+    func startBlockingTimer(method: SessionStartMethod = .nfc) {
         checkAndResetDailyFocusTime()
         isInSession = true
+        sessionStartMethod = method
         let now = Date()
         sessionStartTime = now
         blockingStartDate = now
@@ -398,18 +509,20 @@ class AppState: ObservableObject {
 
     func stopBlockingTimer() {
         isInSession = false
+        sessionStartMethod = .nfc
         sessionStartTime = nil
         timer?.invalidate()
         timer = nil
 
-        // Log focus time (only once!)
+        // Log focus time — split across calendar days if session crosses midnight
         if let startDate = blockingStartDate {
-            let elapsed = Int(Date().timeIntervalSince(startDate))
+            let now = Date()
+            let elapsed = Int(now.timeIntervalSince(startDate))
             if elapsed > 0 {
                 totalBlockedSeconds += TimeInterval(elapsed)
-                logToTodayHistory(TimeInterval(elapsed))
+                logSessionAcrossDays(start: startDate, end: now)
                 #if DEBUG
-                print("[AppState] Session ended — \(elapsed)s logged")
+                print("[AppState] Session ended — \(elapsed)s logged (split across days if needed)")
                 #endif
             }
         }
@@ -417,11 +530,12 @@ class AppState: ObservableObject {
         blockingStartDate = nil
         elapsedSeconds = 0
         saveState()
+        Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
     }
 
     var currentSessionSeconds: TimeInterval {
         guard let start = blockingStartDate else { return 0 }
-        return Date().timeIntervalSince(start)
+        return max(0, Date().timeIntervalSince(start))
     }
 
     // MARK: - Session Restore
@@ -468,8 +582,46 @@ class AppState: ObservableObject {
         let todayKey = DailyFocusEntry.todayKey()
         if let index = focusHistory.firstIndex(where: { $0.date == todayKey }) {
             focusHistory[index].totalSeconds += seconds
+            focusHistory[index].sessionCount += 1
         } else {
-            focusHistory.append(DailyFocusEntry(date: todayKey, totalSeconds: seconds))
+            focusHistory.append(DailyFocusEntry(date: todayKey, totalSeconds: seconds, sessionCount: 1))
+        }
+    }
+
+    /// Splits a session across calendar-day boundaries and logs each segment to focusHistory.
+    /// Example: 11pm–3am logs 1h to day 1, 3h to day 2. Session count goes to start day only.
+    private func logSessionAcrossDays(start: Date, end: Date) {
+        let calendar = Calendar.current
+        let formatter = DailyFocusEntry.dateFormatter
+        var current = start
+        var isFirstSegment = true
+
+        while current < end {
+            guard let nextDayStart = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: current)) else { break }
+            let segmentEnd = min(nextDayStart, end)
+            let segmentSeconds = segmentEnd.timeIntervalSince(current)
+
+            if segmentSeconds > 0 {
+                let dateKey = formatter.string(from: current)
+                if let index = focusHistory.firstIndex(where: { $0.date == dateKey }) {
+                    focusHistory[index].totalSeconds += segmentSeconds
+                    if isFirstSegment {
+                        focusHistory[index].sessionCount += 1
+                    }
+                } else {
+                    focusHistory.append(DailyFocusEntry(
+                        date: dateKey,
+                        totalSeconds: segmentSeconds,
+                        sessionCount: isFirstSegment ? 1 : 0
+                    ))
+                }
+                #if DEBUG
+                print("[AppState] Logged \(Int(segmentSeconds))s to \(dateKey)\(isFirstSegment ? " (+1 session)" : "")")
+                #endif
+            }
+
+            current = segmentEnd
+            isFirstSegment = false
         }
     }
 
@@ -493,25 +645,61 @@ class AppState: ObservableObject {
     var todayFocusSeconds: TimeInterval {
         let todayKey = DailyFocusEntry.todayKey()
         let logged = focusHistory.first(where: { $0.date == todayKey })?.totalSeconds ?? 0
-        return logged + currentSessionSeconds
+        // For active sessions spanning midnight, only count today's portion
+        if let start = blockingStartDate {
+            let startOfToday = Calendar.current.startOfDay(for: Date())
+            let effectiveStart = max(start, startOfToday)
+            return logged + max(0, Date().timeIntervalSince(effectiveStart))
+        }
+        return logged
     }
 
     var weekFocusSeconds: TimeInterval {
-        let calendar = Calendar.current
+        let calendar = CalendarHelper.mondayFirst
         guard let weekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) else { return 0 }
         let weekStartKey = DailyFocusEntry.dateFormatter.string(from: weekStart)
-        return focusHistory
+        let logged = focusHistory
             .filter { $0.date >= weekStartKey }
-            .reduce(0) { $0 + $1.totalSeconds } + currentSessionSeconds
+            .reduce(0) { $0 + $1.totalSeconds }
+        // For active sessions, only count the portion within this week
+        if let start = blockingStartDate {
+            let effectiveStart = max(start, weekStart)
+            return logged + max(0, Date().timeIntervalSince(effectiveStart))
+        }
+        return logged
     }
 
     var monthFocusSeconds: TimeInterval {
         let calendar = Calendar.current
         guard let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) else { return 0 }
         let monthStartKey = DailyFocusEntry.dateFormatter.string(from: monthStart)
-        return focusHistory
+        let logged = focusHistory
             .filter { $0.date >= monthStartKey }
-            .reduce(0) { $0 + $1.totalSeconds } + currentSessionSeconds
+            .reduce(0) { $0 + $1.totalSeconds }
+        // For active sessions, only count the portion within this month
+        if let start = blockingStartDate {
+            let effectiveStart = max(start, monthStart)
+            return logged + max(0, Date().timeIntervalSince(effectiveStart))
+        }
+        return logged
+    }
+
+    var todaySessionCount: Int {
+        let todayKey = DailyFocusEntry.todayKey()
+        let logged = focusHistory.first(where: { $0.date == todayKey })?.sessionCount ?? 0
+        return logged + (isInSession ? 1 : 0)
+    }
+
+    var totalLifetimeSeconds: TimeInterval {
+        focusHistory.reduce(0) { $0 + $1.totalSeconds } + max(0, currentSessionSeconds)
+    }
+
+    var totalLifetimeSessions: Int {
+        focusHistory.reduce(0) { $0 + $1.sessionCount } + (isInSession ? 1 : 0)
+    }
+
+    var totalDaysFocused: Int {
+        focusHistory.filter { $0.totalSeconds > 0 }.count
     }
 
     static func formatTime(_ seconds: TimeInterval) -> String {
@@ -541,29 +729,73 @@ class AppState: ObservableObject {
 
         guard modes.count < 6 else { return }
         modes.append(mode)
+        writeModeTokenToShared(mode)
 
         // Set as active if it's the first mode
         if modes.count == 1 {
             activeModeId = mode.id
         }
         saveState()
+        Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
     }
 
-    func deleteMode(_ mode: BlockingMode) {
-        guard modes.count > 1 else { return }
+    /// Delete a mode and auto-disable any schedules that reference it.
+    /// Returns the list of affected schedules so callers can unregister them from DeviceActivityCenter.
+    @discardableResult
+    func deleteMode(_ mode: BlockingMode) -> [FocusSchedule] {
+        guard modes.count > 1 else { return [] }
+        removeModeTokenFromShared(mode)
         modes.removeAll { $0.id == mode.id }
+
+        // Auto-disable schedules that reference this mode (don't delete — user can reassign)
+        var affected: [FocusSchedule] = []
+        for i in schedules.indices where schedules[i].modeId == mode.id {
+            affected.append(schedules[i])
+            schedules[i].isEnabled = false
+        }
 
         if activeModeId == mode.id {
             activeModeId = modes.first?.id
         }
         saveState()
+        Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+
+        #if DEBUG
+        if !affected.isEmpty {
+            print("[AppState] Auto-disabled \(affected.count) schedules referencing deleted mode '\(mode.name)'")
+        }
+        #endif
+        return affected
     }
 
     func updateMode(_ mode: BlockingMode) {
         if let index = modes.firstIndex(where: { $0.id == mode.id }) {
             modes[index] = mode
+            writeModeTokenToShared(mode)
             saveState()
+            Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
         }
+    }
+
+    // MARK: - Mode Tokens (Shared Storage)
+
+    /// Write a mode's FamilyActivitySelection to shared storage so the extension can read it
+    func writeModeTokenToShared(_ mode: BlockingMode) {
+        guard let data = try? PropertyListEncoder().encode(mode.appSelection) else { return }
+        defaults.set(data, forKey: "mode_tokens_\(mode.id.uuidString)")
+        defaults.synchronize()
+        #if DEBUG
+        print("[AppState] Wrote mode tokens for '\(mode.name)' (\(mode.id.uuidString))")
+        #endif
+    }
+
+    /// Remove a mode's tokens from shared storage
+    func removeModeTokenFromShared(_ mode: BlockingMode) {
+        defaults.removeObject(forKey: "mode_tokens_\(mode.id.uuidString)")
+        defaults.synchronize()
+        #if DEBUG
+        print("[AppState] Removed mode tokens for '\(mode.name)' (\(mode.id.uuidString))")
+        #endif
     }
 
     func setActiveMode(id: UUID) {
@@ -574,11 +806,36 @@ class AppState: ObservableObject {
         saveState()
     }
 
+    // MARK: - Schedules
+
+    static let maxSchedules = 6
+
+    func addSchedule(_ schedule: FocusSchedule) {
+        guard schedules.count < Self.maxSchedules else { return }
+        schedules.append(schedule)
+        saveState()
+    }
+
+    func updateSchedule(_ schedule: FocusSchedule) {
+        if let index = schedules.firstIndex(where: { $0.id == schedule.id }) {
+            schedules[index] = schedule
+            saveState()
+        }
+    }
+
+    func deleteSchedule(_ schedule: FocusSchedule) {
+        schedules.removeAll { $0.id == schedule.id }
+        saveState()
+    }
+
     // MARK: - Onboarding
 
     func markOnboardingComplete() {
         guard !hasCompletedOnboarding else { return }
         hasCompletedOnboarding = true
+        if registrationDate == nil {
+            registrationDate = Date()
+        }
         saveState()
     }
 

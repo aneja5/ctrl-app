@@ -10,7 +10,7 @@ struct ContentView: View {
     @ObservedObject private var appState = AppState.shared
 
     @State private var showAppPicker = false
-    @State private var pickerSelection = FamilyActivitySelection()
+    @State private var pickerSelection = FamilyActivitySelection(includeEntireCategory: true)
 
     // MARK: - Body
 
@@ -54,7 +54,7 @@ struct ContentView: View {
             appState.saveSelectedApps(pickerSelection)
         }
         .onAppear {
-            pickerSelection = appState.selectedApps
+            pickerSelection = appState.selectedApps.withIncludeEntireCategory()
         }
         .task {
             let authorized = await blockingManager.requestAuthorization()
@@ -204,7 +204,9 @@ struct ContentView: View {
     // MARK: - Helpers
 
     private var appCount: Int {
-        appState.selectedApps.applicationTokens.count + appState.selectedApps.categoryTokens.count
+        let apps = appState.selectedApps.applicationTokens.count
+        let cats = appState.selectedApps.categoryTokens.count
+        return cats > 0 && apps == 0 ? cats : apps
     }
 
     // MARK: - Actions
@@ -225,7 +227,9 @@ struct ContentView: View {
                     return
                 }
                 feedbackGenerator.notificationOccurred(.error)
+                #if DEBUG
                 print("Scan failed: \(error.localizedDescription)")
+                #endif
             }
         }
     }
