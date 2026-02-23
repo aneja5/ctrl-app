@@ -56,7 +56,16 @@ final class CloudSyncManager {
                     emergencyResetDate: appState.lastEmergencyResetDate,
                     deviceId: deviceId,
                     encryptedModesData: encryptedBlob,
-                    strictModeEnabled: appState.strictModeEnabled
+                    strictModeEnabled: appState.strictModeEnabled,
+                    currentStreak: appState.currentStreak,
+                    longestStreak: appState.longestStreak,
+                    lastStreakDate: appState.lastStreakDate,
+                    longestSessionSeconds: appState.longestSessionSeconds,
+                    longestSessionDate: appState.longestSessionDate,
+                    bestDaySeconds: appState.bestDaySeconds,
+                    bestDayDate: appState.bestDayDate,
+                    bestWeekSeconds: appState.bestWeekSeconds,
+                    bestWeekStart: appState.bestWeekStart
                 )
 
                 try await SupabaseManager.shared.saveUserData(data)
@@ -162,6 +171,22 @@ final class CloudSyncManager {
 
         // Restore strict mode preference
         appState.strictModeEnabled = cloudData.strictModeEnabled ?? false
+
+        // Restore streak data
+        appState.currentStreak = cloudData.currentStreak ?? 0
+        appState.longestStreak = cloudData.longestStreak ?? 0
+        appState.lastStreakDate = cloudData.lastStreakDate
+
+        // Restore personal records
+        appState.longestSessionSeconds = cloudData.longestSessionSeconds ?? 0
+        appState.longestSessionDate = cloudData.longestSessionDate
+        appState.bestDaySeconds = cloudData.bestDaySeconds ?? 0
+        appState.bestDayDate = cloudData.bestDayDate
+        appState.bestWeekSeconds = cloudData.bestWeekSeconds ?? 0
+        appState.bestWeekStart = cloudData.bestWeekStart
+
+        // Recalculate streak from restored history
+        appState.recalculateStreakFromHistory()
 
         // Note: caller is responsible for calling saveState() (e.g. via markOnboardingComplete)
     }

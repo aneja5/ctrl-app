@@ -98,51 +98,63 @@ struct HomeView: View {
                     .tracking(3)
                     .padding(.top, CTRLSpacing.xl)
 
+                // Top spacer — pushes content cluster above center
                 Spacer()
+                    .frame(minHeight: 60)
 
-                // State Display (Ritual Center)
-                stateDisplay
+                // ── CONTENT CLUSTER (fixed internal layout) ──
 
-                // Fixed spacing
-                Spacer()
-                    .frame(height: CTRLSpacing.md)
+                // Status text — fixed position, property-driven (no if/else swap)
+                Text(isInSession ? "in session" : "unlocked")
+                    .font(CTRLFonts.display)
+                    .tracking(2)
+                    .foregroundColor(isInSession ? CTRLColors.accent : CTRLColors.textPrimary)
+                    .contentTransition(.interpolate)
+                    .animation(.easeInOut(duration: 0.35), value: isInSession)
 
-                // Mode Selector (right under title)
+                // Mode selector — same position in both states
                 modeSelector
+                    .padding(.top, CTRLSpacing.sm)
 
-                // Session timer + badges (below mode selector)
-                if isInSession {
-                    sessionInfo
+                // Timer area — fixed height, content fades in/out
+                ZStack {
+                    if isInSession {
+                        sessionTimerContent
+                            .transition(.opacity.animation(.easeInOut(duration: 0.3)))
+                    }
                 }
+                .frame(height: 80)
+                .padding(.top, CTRLSpacing.xs)
 
-                // Spacing to push button lower — balances visual weight
+                // ── END CONTENT CLUSTER ──
+
+                // Bottom spacer — less than top (pushes cluster above center)
                 Spacer()
-                    .frame(minHeight: 72, maxHeight: 120)
+                    .frame(minHeight: 40)
 
-                // Primary Action
+                // Primary action — single button, property-driven
                 primaryAction
                     .padding(.horizontal, CTRLSpacing.screenPadding + 20)
+                    .padding(.bottom, CTRLSpacing.md)
 
-                // Breathing dot when in session, invisible spacer when not
-                if isInSession {
-                    BreathingDot()
-                        .padding(.top, CTRLSpacing.xl)
+                // Breathing dot — always in layout, opacity-driven
+                BreathingDot()
+                    .opacity(isInSession ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.3), value: isInSession)
+                    .frame(height: 20)
 
-                    // Manual session: show small "end session" text button
-                    if appState.sessionStartMethod == .manual {
-                        Button(action: { showCountdownUnlock = true }) {
-                            Text("end session")
-                                .font(.caption)
-                                .foregroundColor(Color.white.opacity(0.35))
-                        }
-                        .padding(.top, CTRLSpacing.sm)
-                    }
-                } else {
-                    // Reserve space matching sessionInfo + breathing dot to keep title aligned
-                    Spacer()
-                        .frame(height: 150)
+                // Manual end session text — always in layout, opacity-driven
+                Button(action: { showCountdownUnlock = true }) {
+                    Text("end session")
+                        .font(.caption)
+                        .foregroundColor(Color.white.opacity(0.35))
                 }
+                .opacity(isInSession && appState.sessionStartMethod == .manual ? 1 : 0)
+                .allowsHitTesting(isInSession && appState.sessionStartMethod == .manual)
+                .frame(height: 20)
+                .padding(.top, CTRLSpacing.xs)
 
+                // Tab bar clearance
                 Spacer()
                     .frame(height: 100)
             }
@@ -179,7 +191,7 @@ struct HomeView: View {
                 startManualSession()
             }
         } message: {
-            Text("manual sessions require a 60-second cooldown to end. with your tag, ending is instant.")
+            Text("you can start now, but you'll need to tap your ctrl tag to end the session.")
         }
         .fullScreenCover(isPresented: $showCountdownUnlock) {
             CountdownUnlockView(onComplete: {
@@ -332,34 +344,15 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Ritual State Display
+    // MARK: - Session Timer Content (fixed-height container)
 
-    private var stateDisplay: some View {
-        Group {
-            if isInSession {
-                Text("in session")
-                    .font(CTRLFonts.display)
-                    .tracking(2)
-                    .foregroundColor(CTRLColors.accent)
-                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
-            } else {
-                Text("unlocked")
-                    .font(CTRLFonts.display)
-                    .tracking(2)
-                    .foregroundColor(CTRLColors.textPrimary)
-                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
-            }
-        }
-        .animation(.easeInOut(duration: 0.4), value: isInSession)
-    }
-
-    private var sessionInfo: some View {
-        VStack(spacing: CTRLSpacing.md) {
+    /// Timer + badges shown inside the fixed-height ZStack during sessions.
+    private var sessionTimerContent: some View {
+        VStack(spacing: CTRLSpacing.micro) {
             Text(formatSessionTime())
                 .font(CTRLFonts.timer)
                 .foregroundColor(CTRLColors.textPrimary)
                 .monospacedDigit()
-                .padding(.top, CTRLSpacing.md)
                 .scaleEffect(timerScale)
                 .opacity(timerOpacity)
 
@@ -400,47 +393,44 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Primary Action
+    // MARK: - Primary Action (single button, property-driven)
 
     private var primaryAction: some View {
-        Group {
-            if isInSession {
-                Button(action: triggerNFCScan) {
-                    Text("end session")
-                }
-                .buttonStyle(CTRLSecondaryButtonStyle(accentBorder: true))
-                .disabled(nfcManager.isScanning)
-            } else {
-                lockInButton
-                    .disabled(nfcManager.isScanning)
-            }
-        }
-    }
-
-    private var lockInButton: some View {
-        Text("lock in")
+        Text(isInSession ? "end session" : "lock in")
             .font(CTRLFonts.bodyFont)
             .fontWeight(.medium)
-            .foregroundColor(CTRLColors.base)
+            .foregroundColor(isInSession ? CTRLColors.accent : CTRLColors.base)
             .frame(maxWidth: .infinity)
             .frame(height: CTRLSpacing.buttonHeight)
             .background(
                 RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
-                    .fill(CTRLColors.accent)
+                    .fill(isInSession ? CTRLColors.surface2 : CTRLColors.accent)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
+                    .stroke(
+                        isInSession ? CTRLColors.accentMuted.opacity(0.6) : Color.clear,
+                        lineWidth: isInSession ? 1.5 : 0
+                    )
             )
             .clipShape(RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius))
             .scaleEffect(isLongPressing ? 0.97 : 1.0)
+            .opacity(nfcManager.isScanning ? 0.5 : 1.0)
             .animation(.easeOut(duration: 0.15), value: isLongPressing)
+            .animation(.easeInOut(duration: 0.35), value: isInSession)
             .onTapGesture {
-                handleLockIn()
+                guard !nfcManager.isScanning else { return }
+                if isInSession {
+                    triggerNFCScan()
+                } else {
+                    handleLockIn()
+                }
             }
             .onLongPressGesture(minimumDuration: 0.8, pressing: { isPressing in
-                if isPressing {
-                    isLongPressing = true
-                } else {
-                    isLongPressing = false
-                }
+                guard !isInSession else { return }
+                isLongPressing = isPressing
             }, perform: {
+                guard !isInSession else { return }
                 completeLongPress()
             })
     }

@@ -17,6 +17,15 @@ struct CloudUserData: Codable {
     let encryptedModesData: String?
     let strictModeEnabled: Bool?
     let updatedAt: Date?
+    let currentStreak: Int?
+    let longestStreak: Int?
+    let lastStreakDate: String?
+    let longestSessionSeconds: Int?
+    let longestSessionDate: Date?
+    let bestDaySeconds: Int?
+    let bestDayDate: Date?
+    let bestWeekSeconds: Int?
+    let bestWeekStart: Date?
 
     enum CodingKeys: String, CodingKey {
         case id, email
@@ -29,6 +38,15 @@ struct CloudUserData: Codable {
         case encryptedModesData = "encrypted_modes_data"
         case strictModeEnabled = "strict_mode_enabled"
         case updatedAt = "updated_at"
+        case currentStreak = "current_streak"
+        case longestStreak = "longest_streak"
+        case lastStreakDate = "last_streak_date"
+        case longestSessionSeconds = "longest_session_seconds"
+        case longestSessionDate = "longest_session_date"
+        case bestDaySeconds = "best_day_seconds"
+        case bestDayDate = "best_day_date"
+        case bestWeekSeconds = "best_week_seconds"
+        case bestWeekStart = "best_week_start"
     }
 }
 
@@ -44,6 +62,15 @@ struct CloudUserDataWrite: Codable {
     let deviceId: String?
     let encryptedModesData: String?
     let strictModeEnabled: Bool
+    let currentStreak: Int
+    let longestStreak: Int
+    let lastStreakDate: String?
+    let longestSessionSeconds: Int
+    let longestSessionDate: Date?
+    let bestDaySeconds: Int
+    let bestDayDate: Date?
+    let bestWeekSeconds: Int
+    let bestWeekStart: Date?
 
     enum CodingKeys: String, CodingKey {
         case email
@@ -55,6 +82,15 @@ struct CloudUserDataWrite: Codable {
         case deviceId = "device_id"
         case encryptedModesData = "encrypted_modes_data"
         case strictModeEnabled = "strict_mode_enabled"
+        case currentStreak = "current_streak"
+        case longestStreak = "longest_streak"
+        case lastStreakDate = "last_streak_date"
+        case longestSessionSeconds = "longest_session_seconds"
+        case longestSessionDate = "longest_session_date"
+        case bestDaySeconds = "best_day_seconds"
+        case bestDayDate = "best_day_date"
+        case bestWeekSeconds = "best_week_seconds"
+        case bestWeekStart = "best_week_start"
     }
 }
 

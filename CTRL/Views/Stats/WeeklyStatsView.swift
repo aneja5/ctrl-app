@@ -5,39 +5,142 @@ struct WeeklyStatsView: View {
     @Binding var selectedWeekOffset: Int
     @State private var refreshTick: Int = 0
 
-    let maxWeeksBack = 3
+    private var maxWeeksBack: Int {
+        let calendar = CalendarHelper.mondayFirst
+        guard let regDate = appState.registrationDate else { return 0 }
+        let weeks = calendar.dateComponents([.weekOfYear], from: regDate, to: Date()).weekOfYear ?? 0
+        return max(weeks, 0)
+    }
 
     var body: some View {
+        let totalSeconds = weekData.reduce(0) { $0 + $1.seconds }
+
         VStack(spacing: CTRLSpacing.lg) {
-            // Hero Metric
-            heroMetric
-
-            // Bar Chart
-            barChart
-                .padding(.top, CTRLSpacing.md)
-                .padding(.bottom, CTRLSpacing.sm)
-
-            // Week Navigation
-            weekNavigation
-                .padding(.top, CTRLSpacing.sm)
-
-            // Today Card (only for current week)
-            if selectedWeekOffset == 0 {
-                todayCard
+            if totalSeconds > 0 {
+                // Full dashboard
+                streakTrendHeader
+                heroMetric
+                barChart
+                    .padding(.top, CTRLSpacing.md)
+                    .padding(.bottom, CTRLSpacing.sm)
+                weekNavigation
+                    .padding(.top, CTRLSpacing.sm)
+                if selectedWeekOffset == 0 {
+                    todayCard
+                }
+                dailyBreakdown
+                summaryRow
+            } else {
+                // Empty state
+                streakTrendHeader
+                emptyWeekCard
             }
-
-            // Daily Breakdown
-            dailyBreakdown
-
-            // Stats Grid
-            statsGrid
-                .padding(.top, CTRLSpacing.sm)
         }
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
             if appState.isInSession {
                 refreshTick += 1
             }
         }
+    }
+
+    // MARK: - Streak + Trend Header
+
+    private var streakTrendHeader: some View {
+        HStack {
+            streakBadge
+            Spacer()
+            trendIndicator
+        }
+    }
+
+    private var streakBadge: some View {
+        let streak = appState.currentStreak
+
+        return HStack(spacing: 6) {
+            if streak > 0 {
+                Text("🔥")
+                    .font(.system(size: 13))
+            }
+            if streak > 1 {
+                (Text("\(streak)").foregroundColor(CTRLColors.accent) +
+                 Text(" day streak").foregroundColor(Color.white.opacity(0.5)))
+                    .font(.system(size: 14, weight: .medium))
+            } else if streak == 1 {
+                (Text("\(streak)").foregroundColor(CTRLColors.accent) +
+                 Text(" day streak").foregroundColor(Color.white.opacity(0.5)))
+                    .font(.system(size: 14, weight: .medium))
+            } else {
+                Text("start a streak today")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.3))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: CTRLSpacing.buttonRadius)
+                .fill(CTRLColors.surface1)
+        )
+    }
+
+    // MARK: - Empty State
+
+    private var emptyWeekCard: some View {
+        SurfaceCard(padding: CTRLSpacing.lg, cornerRadius: CTRLSpacing.cardRadius) {
+            Text("your first session will show up here")
+                .font(.system(size: 13))
+                .foregroundColor(Color.white.opacity(0.4))
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var trendIndicator: some View {
+        let thisWeekSeconds = weekData.reduce(0) { $0 + $1.seconds }
+
+        if let prev = previousWeekTotalSeconds {
+            let diff = thisWeekSeconds - prev
+
+            if diff > 0 {
+                Text("↑ \(StatsChartHelpers.formatDuration(diff))")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(red: 0.55, green: 0.75, blue: 0.55).opacity(0.8))
+            } else if diff < 0 {
+                Text("↓ \(StatsChartHelpers.formatDuration(abs(diff)))")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.4))
+            } else {
+                Text("same as last week")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.3))
+            }
+        }
+    }
+
+    /// Total seconds for the week before the currently selected week
+    private var previousWeekTotalSeconds: Int? {
+        let calendar = CalendarHelper.mondayFirst
+        let today = Date()
+
+        var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
+        components.weekday = 2
+        guard let startOfCurrentWeek = calendar.date(from: components) else { return nil }
+
+        let prevOffset = selectedWeekOffset - 1
+        guard let prevWeekStart = calendar.date(byAdding: .weekOfYear, value: prevOffset, to: startOfCurrentWeek) else { return nil }
+
+        var total = 0
+        var hasAnyData = false
+        for i in 0..<7 {
+            guard let date = calendar.date(byAdding: .day, value: i, to: prevWeekStart) else { continue }
+            let dateKey = DailyFocusEntry.dateFormatter.string(from: date)
+            if let entry = appState.focusHistory.first(where: { $0.date == dateKey }) {
+                total += Int(entry.totalSeconds)
+                if entry.totalSeconds > 0 { hasAnyData = true }
+            }
+        }
+
+        return hasAnyData ? total : nil
     }
 
     // MARK: - Hero Metric
@@ -115,6 +218,12 @@ struct WeeklyStatsView: View {
                                       )
                                 )
                                 .frame(width: 32, height: StatsChartHelpers.barHeight(for: day.seconds, max: yAxisMax, chartHeight: chartHeight))
+                                .overlay(
+                                    day.isToday
+                                        ? RoundedRectangle(cornerRadius: 8)
+                                            .stroke(CTRLColors.accent.opacity(0.5), lineWidth: 1)
+                                        : nil
+                                )
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -305,41 +414,19 @@ struct WeeklyStatsView: View {
         }
     }
 
-    // MARK: - Stats Grid
+    // MARK: - Summary Row
 
-    private var statsGrid: some View {
+    private var summaryRow: some View {
         let days = weekData
-        let totalSeconds = days.reduce(0) { $0 + $1.seconds }
         let activeDays = days.filter { $0.seconds > 0 }.count
+        let totalSeconds = days.reduce(0) { $0 + $1.seconds }
         let avgSeconds = activeDays > 0 ? totalSeconds / activeDays : 0
 
-        return HStack(spacing: CTRLSpacing.sm) {
-            statCard(value: "\(activeDays)", label: "consistency", subtitle: "days with a session")
-            statCard(value: StatsChartHelpers.formatDuration(avgSeconds), label: "daily rhythm", subtitle: "avg time per day")
-        }
-    }
-
-    private func statCard(value: String, label: String, subtitle: String? = nil) -> some View {
-        SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.buttonRadius) {
-            VStack(spacing: CTRLSpacing.xs) {
-                Text(value)
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundColor(CTRLColors.textPrimary)
-                    .monospacedDigit()
-
-                Text(label)
-                    .font(CTRLFonts.captionFont)
-                    .tracking(1.5)
-                    .foregroundColor(CTRLColors.textTertiary)
-
-                if let subtitle = subtitle {
-                    Text(subtitle)
-                        .font(CTRLFonts.micro)
-                        .foregroundColor(Color.white.opacity(0.35))
-                }
-            }
+        return Text("\(activeDays) of 7 days  ·  \(StatsChartHelpers.formatDuration(avgSeconds)) avg")
+            .font(.system(size: 13))
+            .foregroundColor(Color.white.opacity(0.4))
             .frame(maxWidth: .infinity)
-        }
+            .padding(.top, CTRLSpacing.xs)
     }
 
     // MARK: - Data

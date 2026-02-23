@@ -119,6 +119,26 @@ struct RootView: View {
                 ScheduleManager.cleanupSchedulesIfDisabled()
             }
         }
+        .task {
+            // Background cloud refresh: if signed in, fetch latest from Supabase
+            guard appState.hasCompletedOnboarding,
+                  appState.userEmail != nil else { return }
+
+            // Wait for Supabase session to restore from Keychain (runs in SupabaseManager.init)
+            for _ in 0..<30 {
+                if SupabaseManager.shared.isAuthenticated { break }
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            }
+            guard SupabaseManager.shared.isAuthenticated else { return }
+
+            if let cloudData = await CloudSyncManager.shared.fetchFromCloud() {
+                CloudSyncManager.shared.restoreFromCloud(cloudData, into: appState)
+                appState.saveState()
+                #if DEBUG
+                print("[RootView] Background cloud refresh complete")
+                #endif
+            }
+        }
     }
 
     /// One-time migration: clear the legacy unnamed ManagedSettingsStore.

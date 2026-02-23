@@ -15,23 +15,32 @@ struct MonthlyStatsView: View {
     @State var selectedMonthOffset: Int = 0
     @State private var refreshTick: Int = 0
 
-    private let maxMonthsBack = 3
+    private var maxMonthsBack: Int {
+        guard let regDate = appState.registrationDate else { return 0 }
+        let months = Calendar.current.dateComponents([.month], from: regDate, to: Date()).month ?? 0
+        return max(months, 0)
+    }
 
     var body: some View {
+        let totalSeconds = monthData.reduce(0) { $0 + $1.seconds }
+
         VStack(spacing: CTRLSpacing.lg) {
-            // Month Navigation
+            // Month Navigation — always shown so users can browse
             monthNavigation
 
-            // Hero
-            monthHero
-
-            // Calendar Heatmap
-            monthHeatmap
-                .padding(.top, CTRLSpacing.md)
-
-            // Patterns Section
-            patternsSection
-                .padding(.top, CTRLSpacing.md)
+            if totalSeconds > 0 {
+                // Full dashboard
+                monthHero
+                dailyAverageLine
+                patternsSection
+                    .padding(.top, CTRLSpacing.md)
+                monthHeatmap
+                    .padding(.top, CTRLSpacing.md)
+                bestDayCard
+            } else {
+                // Empty state
+                emptyMonthCard
+            }
         }
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
             if appState.isInSession {
@@ -84,13 +93,23 @@ struct MonthlyStatsView: View {
         return formatter.string(from: month).lowercased()
     }
 
+    // MARK: - Empty State
+
+    private var emptyMonthCard: some View {
+        SurfaceCard(padding: CTRLSpacing.lg, cornerRadius: CTRLSpacing.cardRadius) {
+            Text("your first session will show progress here")
+                .font(.system(size: 13))
+                .foregroundColor(Color.white.opacity(0.4))
+                .frame(maxWidth: .infinity)
+        }
+    }
+
     // MARK: - Month Hero
 
     private var monthHero: some View {
         let days = monthData
         let totalSeconds = days.reduce(0) { $0 + $1.seconds }
         let activeDays = days.filter { $0.seconds > 0 }.count
-        let avgSeconds = activeDays > 0 ? totalSeconds / activeDays : 0
         let isEmpty = totalSeconds == 0
 
         return SurfaceCard(padding: CTRLSpacing.lg, cornerRadius: CTRLSpacing.cardRadius) {
@@ -105,7 +124,7 @@ struct MonthlyStatsView: View {
                         .font(CTRLFonts.micro)
                         .foregroundColor(Color.white.opacity(0.4))
                 } else {
-                    Text("\(StatsChartHelpers.formatDuration(avgSeconds)) daily average")
+                    Text("across \(activeDays) \(activeDays == 1 ? "day" : "days")")
                         .font(CTRLFonts.captionFont)
                         .tracking(1.5)
                         .foregroundColor(CTRLColors.textTertiary)
@@ -115,104 +134,66 @@ struct MonthlyStatsView: View {
         }
     }
 
-    // MARK: - Month Heatmap
+    // MARK: - Daily Average Line
 
-    private var monthHeatmap: some View {
+    @ViewBuilder
+    private var dailyAverageLine: some View {
         let days = monthData
-        let calendar = Calendar.current
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
-        let dayHeaders = ["m", "t", "w", "t", "f", "s", "s"]
+        let totalSeconds = days.reduce(0) { $0 + $1.seconds }
+        let activeDays = days.filter { $0.seconds > 0 }.count
+        let avgSeconds = activeDays > 0 ? totalSeconds / activeDays : 0
 
-        // Calculate leading empty cells (Monday-first grid)
-        // MonthDayData weekday: 1=Sun, 2=Mon...7=Sat
-        // Mon-first index: Mon=0, Tue=1...Sun=6
-        let firstWeekday = days.first?.weekday ?? 2
-        let leadingBlanks = (firstWeekday + 5) % 7
-
-        return VStack(spacing: CTRLSpacing.sm) {
-            // Legend
-            HStack(spacing: CTRLSpacing.xs) {
-                Spacer()
-                heatmapLegendItem(color: CTRLColors.accent.opacity(0.25), label: "<1h")
-                heatmapLegendItem(color: CTRLColors.accent.opacity(0.50), label: "1-3h")
-                heatmapLegendItem(color: CTRLColors.accent.opacity(0.75), label: "3-5h")
-                heatmapLegendItem(color: CTRLColors.accent, label: ">5h")
-            }
-
-            // Day-of-week header
-            LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(0..<7, id: \.self) { i in
-                    Text(dayHeaders[i])
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(CTRLColors.textTertiary)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-
-            // Calendar grid
-            LazyVGrid(columns: columns, spacing: 4) {
-                // Leading blank cells (negative IDs to avoid collision with day IDs)
-                ForEach((-leadingBlanks..<0), id: \.self) { _ in
-                    Color.clear
-                        .aspectRatio(1, contentMode: .fit)
-                }
-
-                // Day cells
-                ForEach(days) { day in
-                    let isToday = calendar.isDateInToday(day.date) && selectedMonthOffset == 0
-                    let tierColor = heatmapTierColor(seconds: day.seconds)
-
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(tierColor)
-
-                        if isToday {
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(CTRLColors.accent, lineWidth: 1.5)
-                        }
-
-                        Text("\(day.day)")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(day.seconds > 0 ? CTRLColors.textPrimary : CTRLColors.textTertiary)
-                    }
-                    .aspectRatio(1, contentMode: .fit)
-                }
-            }
+        if totalSeconds > 0 {
+            Text("\(StatsChartHelpers.formatDuration(avgSeconds)) daily average")
+                .font(.system(size: 12))
+                .foregroundColor(Color.white.opacity(0.3))
+                .frame(maxWidth: .infinity)
         }
     }
 
-    private func heatmapTierColor(seconds: Int) -> Color {
-        let hours = Double(seconds) / 3600.0
-        if seconds == 0 { return CTRLColors.surface1 }
-        if hours < 1 { return CTRLColors.accent.opacity(0.25) }
-        if hours < 3 { return CTRLColors.accent.opacity(0.50) }
-        if hours < 5 { return CTRLColors.accent.opacity(0.75) }
-        return CTRLColors.accent
-    }
-
-    private func heatmapLegendItem(color: Color, label: String) -> some View {
-        HStack(spacing: 4) {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(color)
-                .frame(width: 10, height: 10)
-
-            Text(label)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(CTRLColors.textTertiary)
-        }
-    }
-
-    // MARK: - Patterns Section
+    // MARK: - Patterns Section (promoted above heatmap)
 
     private var patternsSection: some View {
-        VStack(spacing: CTRLSpacing.sm) {
+        let averages = weekdayAverages
+
+        return VStack(spacing: CTRLSpacing.sm) {
             CTRLSectionHeader(title: "patterns")
 
-            dayOfWeekBars
+            // Insight line
+            if let insight = patternsInsight(averages: averages) {
+                Text(insight)
+                    .font(.system(size: 13))
+                    .foregroundColor(Color.white.opacity(0.4))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, CTRLSpacing.xs)
+            }
+
+            dayOfWeekBars(averages: averages)
         }
     }
 
-    private var dayOfWeekBars: some View {
+    private func patternsInsight(averages: [(name: String, avg: Int)]) -> String? {
+        let active = averages.filter { $0.avg > 0 }
+        guard active.count >= 3 else { return nil }
+
+        guard let best = averages.max(by: { $0.avg < $1.avg }),
+              best.avg > 0 else { return nil }
+
+        let fullNames = ["mon": "mondays", "tue": "tuesdays", "wed": "wednesdays",
+                         "thu": "thursdays", "fri": "fridays", "sat": "saturdays", "sun": "sundays"]
+        let dayName = fullNames[best.name] ?? best.name
+
+        // Check if weekends dominate
+        let weekendAvg = averages[5].avg + averages[6].avg
+        let weekdayAvg = averages[0..<5].reduce(0) { $0 + $1.avg }
+        if weekendAvg > weekdayAvg && averages[5].avg > 0 && averages[6].avg > 0 {
+            return "weekends are your rhythm"
+        }
+
+        return "you focus most on \(dayName)"
+    }
+
+    private var weekdayAverages: [(name: String, avg: Int)] {
         let days = monthData
         let dayNames = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -221,18 +202,19 @@ struct MonthlyStatsView: View {
         for i in 0..<7 { weekdayTotals[i] = [] }
 
         for day in days {
-            // Convert Calendar weekday (1=Sun) to Mon-based index (0=Mon..6=Sun)
             let monIndex = (day.weekday + 5) % 7
             weekdayTotals[monIndex]?.append(day.seconds)
         }
 
-        let averages: [(name: String, avg: Int)] = (0..<7).map { i in
+        return (0..<7).map { i in
             let entries = weekdayTotals[i] ?? []
             let activeDays = entries.filter { $0 > 0 }
             let avg = activeDays.isEmpty ? 0 : activeDays.reduce(0, +) / activeDays.count
             return (dayNames[i], avg)
         }
+    }
 
+    private func dayOfWeekBars(averages: [(name: String, avg: Int)]) -> some View {
         let maxAvg = max(averages.map { $0.avg }.max() ?? 1, 1)
 
         return SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.cardRadius) {
@@ -266,6 +248,122 @@ struct MonthlyStatsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Month Heatmap
+
+    private var monthHeatmap: some View {
+        let days = monthData
+        let calendar = Calendar.current
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
+        let dayHeaders = ["m", "t", "w", "t", "f", "s", "s"]
+
+        // Calculate leading empty cells (Monday-first grid)
+        let firstWeekday = days.first?.weekday ?? 2
+        let leadingBlanks = (firstWeekday + 5) % 7
+
+        return VStack(spacing: CTRLSpacing.sm) {
+            // Legend (3 tiers, right-aligned)
+            HStack(spacing: CTRLSpacing.xs) {
+                Spacer()
+                heatmapLegendItem(color: CTRLColors.accent.opacity(0.4), label: "<2h")
+                heatmapLegendItem(color: CTRLColors.accent.opacity(0.7), label: "2-4h")
+                heatmapLegendItem(color: CTRLColors.accent, label: ">4h")
+            }
+
+            // Day-of-week header
+            LazyVGrid(columns: columns, spacing: 4) {
+                ForEach(0..<7, id: \.self) { i in
+                    Text(dayHeaders[i])
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(CTRLColors.textTertiary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+
+            // Calendar grid
+            LazyVGrid(columns: columns, spacing: 4) {
+                // Leading blank cells
+                ForEach((-leadingBlanks..<0), id: \.self) { _ in
+                    Color.clear
+                        .aspectRatio(1, contentMode: .fit)
+                }
+
+                // Day cells
+                ForEach(days) { day in
+                    let isToday = calendar.isDateInToday(day.date) && selectedMonthOffset == 0
+                    let tierColor = heatmapTierColor(seconds: day.seconds)
+
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(tierColor)
+
+                        if isToday {
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(CTRLColors.accent.opacity(0.4), lineWidth: 1.5)
+                        }
+
+                        Text("\(day.day)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(day.seconds > 0 ? CTRLColors.textPrimary : CTRLColors.textTertiary)
+                    }
+                    .aspectRatio(1, contentMode: .fit)
+                }
+            }
+        }
+    }
+
+    private func heatmapTierColor(seconds: Int) -> Color {
+        let hours = Double(seconds) / 3600.0
+        if seconds == 0 { return CTRLColors.surface1 }
+        if hours < 2 { return CTRLColors.accent.opacity(0.4) }
+        if hours < 4 { return CTRLColors.accent.opacity(0.7) }
+        return CTRLColors.accent
+    }
+
+    private func heatmapLegendItem(color: Color, label: String) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color)
+                .frame(width: 10, height: 10)
+
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(Color.white.opacity(0.3))
+        }
+    }
+
+    // MARK: - Best Day Card
+
+    @ViewBuilder
+    private var bestDayCard: some View {
+        let days = monthData
+        let daysWithData = days.filter { $0.seconds > 0 }
+
+        if daysWithData.count >= 2,
+           let best = daysWithData.max(by: { $0.seconds < $1.seconds }) {
+            let dateLabel = bestDayDateLabel(best.date)
+
+            SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.buttonRadius) {
+                VStack(spacing: CTRLSpacing.xs) {
+                    Text("best day")
+                        .font(.system(size: 11))
+                        .tracking(1.5)
+                        .foregroundColor(Color.white.opacity(0.3))
+
+                    Text("\(dateLabel) — \(StatsChartHelpers.formatDuration(best.seconds))")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.7))
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func bestDayDateLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d"
+        return formatter.string(from: date).lowercased()
     }
 
     // MARK: - Data

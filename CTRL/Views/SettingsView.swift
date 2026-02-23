@@ -62,7 +62,7 @@ struct SettingsView: View {
         .alert(
             activeAlert == .override ? "override session" :
             activeAlert == .signOut ? "sign out?" :
-            activeAlert == .strictMode ? "enable strict mode?" : "delete cloud data?",
+            activeAlert == .strictMode ? "enable strict mode?" : "delete all data?",
             isPresented: Binding(
                 get: { activeAlert != nil },
                 set: { if !$0 { activeAlert = nil } }
@@ -112,11 +112,11 @@ struct SettingsView: View {
             case .override:
                 Text("end session without your ctrl? \(appState.emergencyUnlocksRemaining) overrides remaining.")
             case .signOut:
-                Text("you'll need to sign in again. your modes and history will be kept on this device.")
+                Text("your modes and stats are safely synced to the cloud. sign back in anytime to pick up where you left off.")
             case .deleteData:
-                Text("this will permanently delete your email and all synced data from our servers. your local modes and history will be kept on this device.")
+                Text("this permanently erases your account, email, and all data from our servers and this device. this cannot be undone.")
             case .strictMode:
-                Text("during strict mode sessions, you won't be able to delete or install apps on your device. you can still use emergency overrides. are you sure?")
+                Text("while in a session, you won't be able to delete apps from your device. you can still use emergency overrides if needed.")
             }
         }
         .navigationBarHidden(true)
@@ -568,12 +568,7 @@ struct SettingsView: View {
             do {
                 try await SupabaseManager.shared.signOut()
                 await MainActor.run {
-                    // Clear auth state only
-                    appState.userEmail = nil
-                    appState.hasCompletedOnboarding = false
-                    appState.saveState()
-
-                    // Modes, focus history, app selections remain intact
+                    appState.resetLocalData()
                 }
             } catch {
                 #if DEBUG
@@ -591,9 +586,7 @@ struct SettingsView: View {
                 try await SupabaseManager.shared.signOut()
                 await MainActor.run {
                     isDeletingData = false
-                    appState.userEmail = nil
-                    appState.hasCompletedOnboarding = false
-                    appState.saveState()
+                    appState.resetLocalData()
                 }
             } catch {
                 await MainActor.run {

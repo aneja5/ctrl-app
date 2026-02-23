@@ -22,6 +22,12 @@ class NFCManager: NSObject, ObservableObject {
     private var completionHandler: ((Result<String, Error>) -> Void)?
     private let feedbackGenerator = UINotificationFeedbackGenerator()
 
+    /// Timestamp of the last completed scan — iOS needs ~2s to release NFC hardware.
+    private var lastScanCompletionTime: Date?
+
+    /// Minimum seconds between scan completions to avoid iOS `Code=203` resource errors.
+    private let scanCooldown: TimeInterval = 2.0
+
     // MARK: - Lifecycle
 
     deinit {
@@ -35,6 +41,19 @@ class NFCManager: NSObject, ObservableObject {
     func scan(completion: @escaping (Result<String, Error>) -> Void) {
         guard isAvailable else {
             completion(.failure(NFCError.notAvailable))
+            return
+        }
+
+        // Block overlapping scans
+        guard !isScanning else { return }
+
+        // iOS needs ~2s to release NFC hardware after a scan.
+        // Scanning too fast causes Code=203 "System resource unavailable".
+        if let last = lastScanCompletionTime,
+           Date().timeIntervalSince(last) < scanCooldown {
+            #if DEBUG
+            print("[NFC] Scan blocked — cooldown (\(String(format: "%.1f", Date().timeIntervalSince(last)))s < \(scanCooldown)s)")
+            #endif
             return
         }
 
@@ -67,6 +86,7 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
     func readerSession(_ session: NFCNDEFReaderSession, didInvalidateWithError error: Error) {
         DispatchQueue.main.async { [weak self] in
             self?.isScanning = false
+            self?.lastScanCompletionTime = Date()
             self?.session = nil
         }
 
@@ -189,6 +209,7 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
                         DispatchQueue.main.async {
                             self.lastTagID = tagID
                             self.isScanning = false
+                            self.lastScanCompletionTime = Date()
                             self.completionHandler?(.success(tagID))
                             self.completionHandler = nil
                         }

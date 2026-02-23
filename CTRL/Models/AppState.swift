@@ -34,6 +34,15 @@ class AppState: ObservableObject {
         static let schedulesData = "ctrl_schedules_data"
         static let sessionStartMethod = "ctrl_session_start_method"
         static let registrationDate = "ctrl_registration_date"
+        static let currentStreak = "ctrl_current_streak"
+        static let longestStreak = "ctrl_longest_streak"
+        static let lastStreakDate = "ctrl_last_streak_date"
+        static let longestSessionSeconds = "ctrl_longest_session_seconds"
+        static let longestSessionDate = "ctrl_longest_session_date"
+        static let bestDaySeconds = "ctrl_best_day_seconds"
+        static let bestDayDate = "ctrl_best_day_date"
+        static let bestWeekSeconds = "ctrl_best_week_seconds"
+        static let bestWeekStart = "ctrl_best_week_start"
     }
 
     // MARK: - Persistence
@@ -72,6 +81,18 @@ class AppState: ObservableObject {
     @Published var sessionStartMethod: SessionStartMethod = .nfc
     @Published var elapsedSeconds: Int = 0
     @Published var schedules: [FocusSchedule] = []
+    @Published var currentStreak: Int = 0
+    @Published var longestStreak: Int = 0
+    var lastStreakDate: String? = nil  // "yyyy-MM-dd"
+
+    // Personal records
+    var longestSessionSeconds: Int = 0
+    var longestSessionDate: Date? = nil
+    var bestDaySeconds: Int = 0
+    var bestDayDate: Date? = nil
+    var bestWeekSeconds: Int = 0
+    var bestWeekStart: Date? = nil
+
     @Published var sessionStartTime: Date? {
         didSet {
             if !isLoadingState {
@@ -286,6 +307,22 @@ class AppState: ObservableObject {
             schedules = loadedSchedules
         }
 
+        // Load streak data
+        currentStreak = defaults.integer(forKey: Keys.currentStreak)
+        longestStreak = defaults.integer(forKey: Keys.longestStreak)
+        lastStreakDate = defaults.string(forKey: Keys.lastStreakDate)
+
+        // Load personal records
+        longestSessionSeconds = defaults.integer(forKey: Keys.longestSessionSeconds)
+        longestSessionDate = defaults.object(forKey: Keys.longestSessionDate) as? Date
+        bestDaySeconds = defaults.integer(forKey: Keys.bestDaySeconds)
+        bestDayDate = defaults.object(forKey: Keys.bestDayDate) as? Date
+        bestWeekSeconds = defaults.integer(forKey: Keys.bestWeekSeconds)
+        bestWeekStart = defaults.object(forKey: Keys.bestWeekStart) as? Date
+
+        // Recalculate streak from history (handles app not opened for days)
+        recalculateStreakFromHistory()
+
         checkAndResetDailyFocusTime()
         checkAndResetMonthlyAllowance()
 
@@ -369,6 +406,19 @@ class AppState: ObservableObject {
         } else {
             defaults.removeObject(forKey: Keys.sessionStartTime)
         }
+
+        // Save streak data
+        defaults.set(currentStreak, forKey: Keys.currentStreak)
+        defaults.set(longestStreak, forKey: Keys.longestStreak)
+        defaults.set(lastStreakDate, forKey: Keys.lastStreakDate)
+
+        // Save personal records
+        defaults.set(longestSessionSeconds, forKey: Keys.longestSessionSeconds)
+        if let d = longestSessionDate { defaults.set(d, forKey: Keys.longestSessionDate) }
+        defaults.set(bestDaySeconds, forKey: Keys.bestDaySeconds)
+        if let d = bestDayDate { defaults.set(d, forKey: Keys.bestDayDate) }
+        defaults.set(bestWeekSeconds, forKey: Keys.bestWeekSeconds)
+        if let d = bestWeekStart { defaults.set(d, forKey: Keys.bestWeekStart) }
 
         defaults.synchronize()
 
@@ -521,6 +571,7 @@ class AppState: ObservableObject {
             if elapsed > 0 {
                 totalBlockedSeconds += TimeInterval(elapsed)
                 logSessionAcrossDays(start: startDate, end: now)
+                updateStreakAndRecords(sessionSeconds: elapsed)
                 #if DEBUG
                 print("[AppState] Session ended — \(elapsed)s logged (split across days if needed)")
                 #endif
@@ -638,6 +689,114 @@ class AppState: ObservableObject {
         let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
         let cutoffKey = DailyFocusEntry.dateFormatter.string(from: cutoff)
         focusHistory.removeAll { $0.date < cutoffKey }
+    }
+
+    // MARK: - Streak Tracking
+
+    /// Recalculates streak from focusHistory. Called on launch to handle
+    /// days when the app wasn't opened (streak may have broken).
+    func recalculateStreakFromHistory() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let formatter = DailyFocusEntry.dateFormatter
+
+        // Build set of dates with 1+ minute sessions
+        let activeDates: Set<String> = Set(
+            focusHistory
+                .filter { $0.totalSeconds >= 60 }
+                .map { $0.date }
+        )
+
+        // Include today if currently in session or has data
+        let todayKey = formatter.string(from: today)
+        var checkDates = activeDates
+        if isInSession { checkDates.insert(todayKey) }
+
+        // Count consecutive days backwards from today (or yesterday)
+        var streak = 0
+        var checkDate = today
+
+        // If today has no qualifying data, start from yesterday
+        // (give users the full day to maintain streak)
+        if !checkDates.contains(todayKey) {
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else {
+                currentStreak = 0
+                return
+            }
+            checkDate = yesterday
+        }
+
+        while true {
+            let key = formatter.string(from: checkDate)
+            if checkDates.contains(key) {
+                streak += 1
+                guard let prev = calendar.date(byAdding: .day, value: -1, to: checkDate) else { break }
+                checkDate = prev
+            } else {
+                break
+            }
+        }
+
+        currentStreak = streak
+        if streak > longestStreak {
+            longestStreak = streak
+        }
+    }
+
+    /// Called after each session ends. Updates streak and personal records.
+    func updateStreakAndRecords(sessionSeconds: Int) {
+        let todayKey = DailyFocusEntry.todayKey()
+
+        // --- Streak update ---
+        if lastStreakDate == todayKey {
+            // Already counted today — just recalc to be safe
+            recalculateStreakFromHistory()
+        } else {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            let yesterdayKey: String? = {
+                guard let y = calendar.date(byAdding: .day, value: -1, to: today) else { return nil }
+                return DailyFocusEntry.dateFormatter.string(from: y)
+            }()
+
+            // Only count if today's total is 1+ minutes
+            let todayTotal = focusHistory.first(where: { $0.date == todayKey })?.totalSeconds ?? 0
+            if todayTotal >= 60 {
+                if lastStreakDate == yesterdayKey {
+                    currentStreak += 1
+                } else if lastStreakDate != todayKey {
+                    // Gap > 1 day or first streak
+                    currentStreak = 1
+                }
+                lastStreakDate = todayKey
+                if currentStreak > longestStreak {
+                    longestStreak = currentStreak
+                }
+            }
+        }
+
+        // --- Personal records ---
+        // Longest session
+        if sessionSeconds > longestSessionSeconds {
+            longestSessionSeconds = sessionSeconds
+            longestSessionDate = Date()
+        }
+
+        // Best day (check today's total)
+        let todayTotal = Int(todayFocusSeconds)
+        if todayTotal > bestDaySeconds {
+            bestDaySeconds = todayTotal
+            bestDayDate = Date()
+        }
+
+        // Best week (check current week's total)
+        let weekTotal = Int(weekFocusSeconds)
+        if weekTotal > bestWeekSeconds {
+            bestWeekSeconds = weekTotal
+            let calendar = CalendarHelper.mondayFirst
+            let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+            bestWeekStart = calendar.date(from: components)
+        }
     }
 
     // MARK: - Focus Stats
@@ -837,6 +996,76 @@ class AppState: ObservableObject {
             registrationDate = Date()
         }
         saveState()
+    }
+
+    // MARK: - Reset Local Data (Sign-Out / Delete)
+
+    /// Wipes all local data (UserDefaults + in-memory state).
+    /// Called on sign-out and delete-data. Does NOT touch Keychain.
+    func resetLocalData() {
+        // 1. Stop any active timer
+        timer?.invalidate()
+        timer = nil
+
+        // 2. Clear mode tokens from shared storage (before wiping modes)
+        for mode in modes {
+            removeModeTokenFromShared(mode)
+        }
+
+        // 3. Wipe ALL keys from app group UserDefaults
+        for key in defaults.dictionaryRepresentation().keys {
+            defaults.removeObject(forKey: key)
+        }
+        defaults.synchronize()
+
+        // 4. Cancel pending debounced saves
+        saveWorkItem?.cancel()
+        saveWorkItem = nil
+
+        // 5. Reset all @Published properties to defaults
+        //    Use isLoadingState to suppress Combine observers
+        isLoadingState = true
+        defer { isLoadingState = false }
+
+        isAuthorized = false
+        isBlocking = false
+        selectedApps = FamilyActivitySelection(includeEntireCategory: true)
+        modes = []
+        activeModeId = nil
+        emergencyUnlocksRemaining = 5
+        totalBlockedSeconds = 0
+        focusHistory = []
+        strictModeEnabled = false
+        hasCompletedOnboarding = false
+        userEmail = nil
+        isInSession = false
+        sessionStartMethod = .nfc
+        elapsedSeconds = 0
+        schedules = []
+        sessionStartTime = nil
+        currentStreak = 0
+        longestStreak = 0
+
+        // 6. Reset non-published properties
+        lastEmergencyResetDate = nil
+        registrationDate = nil
+        blockingStartDate = nil
+        focusDate = nil
+        lastStreakDate = nil
+        longestSessionSeconds = 0
+        longestSessionDate = nil
+        bestDaySeconds = 0
+        bestDayDate = nil
+        bestWeekSeconds = 0
+        bestWeekStart = nil
+
+        // 7. Reset transient flags
+        isReturningFromNewDevice = false
+        showReselectionAlert = false
+
+        #if DEBUG
+        print("[AppState] All local data wiped")
+        #endif
     }
 
 }

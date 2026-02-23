@@ -5,25 +5,73 @@ struct LifetimeStatsView: View {
     @State private var refreshTick: Int = 0
 
     var body: some View {
+        let isEmpty = appState.totalLifetimeSeconds <= 0
+
         VStack(spacing: CTRLSpacing.lg) {
-            // Lifetime Hero
-            lifetimeHero
-
-            // Stat Cards
-            statCards
-
-            // Avg Per Week
-            avgPerWeekCard
-
-            // Monthly Summary
-            monthlySummarySection
-                .padding(.top, CTRLSpacing.sm)
+            if isEmpty {
+                // Empty state
+                emptyLifetimeHero
+                emptyLifetimePrompt
+            } else {
+                // Full dashboard
+                lifetimeHero
+                streakCards
+                compactStatsRow
+                personalRecordsCard
+                monthlySummarySection
+                    .padding(.top, CTRLSpacing.sm)
+            }
         }
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
             if appState.isInSession {
                 refreshTick += 1
             }
         }
+    }
+
+    // MARK: - Empty State
+
+    private var emptyLifetimeHero: some View {
+        VStack(spacing: CTRLSpacing.sm) {
+            Text("0")
+                .font(.system(size: 48, weight: .ultraLight))
+                .foregroundColor(Color.white.opacity(0.2))
+                .monospacedDigit()
+
+            Text("hours reclaimed")
+                .font(CTRLFonts.captionFont)
+                .tracking(2)
+                .foregroundColor(Color.white.opacity(0.3))
+
+            Text("every hour counts")
+                .font(CTRLFonts.bodySmall)
+                .foregroundColor(CTRLColors.textSecondary)
+                .padding(.top, CTRLSpacing.xs)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, CTRLSpacing.xl)
+        .padding(.horizontal, CTRLSpacing.lg)
+        .background(
+            RoundedRectangle(cornerRadius: CTRLSpacing.cardRadius)
+                .fill(
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            CTRLColors.surface1,
+                            CTRLColors.surface2.opacity(0.5)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        )
+    }
+
+    private var emptyLifetimePrompt: some View {
+        Text("complete your first session to start tracking")
+            .font(.system(size: 13))
+            .foregroundColor(Color.white.opacity(0.3))
+            .frame(maxWidth: .infinity)
+            .padding(.top, CTRLSpacing.xl)
     }
 
     // MARK: - Lifetime Hero (subtle gradient)
@@ -68,74 +116,213 @@ struct LifetimeStatsView: View {
     }
 
     private func milestoneText(hours: Double) -> String {
-        if hours < 1 {
-            return "your journey begins"
-        } else if hours < 10 {
+        if hours < 5 {
             return "every hour counts"
-        } else if hours < 50 {
-            return "building a real habit"
+        } else if hours < 24 {
+            return "that's \(Int(hours)) hours back in your life"
         } else if hours < 100 {
-            return "over fifty hours reclaimed"
+            let days = Int(hours / 24)
+            return "over \(days > 1 ? "\(days) days" : "a full day") reclaimed"
+        } else if hours < 500 {
+            let days = Int(hours / 24)
+            return "over \(days) days of your life, reclaimed"
         } else {
-            return "a hundred hours of intentional focus"
+            let weeks = Int(hours / 168)
+            return "you've reclaimed \(weeks) weeks"
         }
     }
 
-    // MARK: - Stat Cards
+    // MARK: - Streak Cards
 
-    private var statCards: some View {
+    private var streakCards: some View {
         HStack(spacing: CTRLSpacing.sm) {
-            statCard(
-                value: "\(appState.totalDaysFocused)",
-                label: "days focused",
-                isZero: appState.totalDaysFocused == 0
-            )
-            statCard(
-                value: "\(appState.totalLifetimeSessions)",
-                label: "sessions",
-                isZero: appState.totalLifetimeSessions == 0
-            )
-        }
-    }
+            // Current streak
+            SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.buttonRadius) {
+                VStack(spacing: CTRLSpacing.xs) {
+                    Text("\(appState.currentStreak)")
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundColor(appState.currentStreak > 0 ? CTRLColors.accent : Color.white.opacity(0.3))
+                        .monospacedDigit()
 
-    private func statCard(value: String, label: String, isZero: Bool = false) -> some View {
-        SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.buttonRadius) {
-            VStack(spacing: CTRLSpacing.xs) {
-                Text(value)
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundColor(isZero ? CTRLColors.textPrimary.opacity(0.3) : CTRLColors.textPrimary)
-                    .monospacedDigit()
+                    Text("current streak")
+                        .font(.system(size: 11))
+                        .tracking(1.5)
+                        .foregroundColor(Color.white.opacity(0.4))
 
-                Text(label)
-                    .font(CTRLFonts.captionFont)
-                    .tracking(1.5)
-                    .foregroundColor(CTRLColors.textTertiary)
+                    Text(appState.currentStreak > 0 ? "days" : "start today")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.white.opacity(0.3))
+
+                }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
-        }
-    }
 
-    // MARK: - Avg Per Week
+            // Longest streak
+            SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.buttonRadius) {
+                VStack(spacing: CTRLSpacing.xs) {
+                    Text("\(appState.longestStreak)")
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundColor(CTRLColors.textPrimary)
+                        .monospacedDigit()
 
-    private var avgPerWeekCard: some View {
-        let avgWeeklySeconds = calculateAvgWeeklySeconds()
-        let isZero = avgWeeklySeconds == 0
+                    Text("longest streak")
+                        .font(.system(size: 11))
+                        .tracking(1.5)
+                        .foregroundColor(Color.white.opacity(0.4))
 
-        return SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.buttonRadius) {
-            VStack(spacing: CTRLSpacing.xs) {
-                Text(StatsChartHelpers.formatDuration(avgWeeklySeconds))
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundColor(isZero ? CTRLColors.textPrimary.opacity(0.3) : CTRLColors.textPrimary)
-                    .monospacedDigit()
-
-                Text("avg per week")
-                    .font(CTRLFonts.captionFont)
-                    .tracking(1.5)
-                    .foregroundColor(CTRLColors.textTertiary)
+                    Text("days")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.white.opacity(0.3))
+                }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
         }
     }
+
+    // MARK: - Compact Stats Row
+
+    private var compactStatsRow: some View {
+        let _ = refreshTick
+        let avgWeekly = calculateAvgWeeklySeconds()
+
+        return Text("\(appState.totalDaysFocused) days  ·  \(appState.totalLifetimeSessions) sessions  ·  \(StatsChartHelpers.formatDuration(avgWeekly)) avg/week")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundColor(Color.white.opacity(0.4))
+            .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Personal Records Card
+
+    @ViewBuilder
+    private var personalRecordsCard: some View {
+        let records = computePersonalRecords()
+
+        if !records.isEmpty {
+            VStack(spacing: CTRLSpacing.sm) {
+                CTRLSectionHeader(title: "personal records")
+
+                SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.cardRadius) {
+                    VStack(spacing: CTRLSpacing.md) {
+                        ForEach(records, id: \.label) { record in
+                            recordRow(label: record.label, display: record.display)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private struct PersonalRecord {
+        let label: String
+        let display: String // "1h 42m  ·  sat, feb 21"
+    }
+
+    private func computePersonalRecords() -> [PersonalRecord] {
+        var records: [PersonalRecord] = []
+        let history = appState.focusHistory
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "EEE, MMM d"
+        let weekFormatter = DateFormatter()
+        weekFormatter.dateFormat = "MMM d"
+
+        // Longest session — from persisted record (can't derive from daily totals)
+        if appState.longestSessionSeconds > 0 {
+            let value = StatsChartHelpers.formatDuration(appState.longestSessionSeconds)
+            if let date = appState.longestSessionDate {
+                records.append(PersonalRecord(
+                    label: "longest session",
+                    display: "\(value)  ·  \(dateFormatter.string(from: date).lowercased())"
+                ))
+            } else {
+                records.append(PersonalRecord(label: "longest session", display: value))
+            }
+        }
+
+        // Best day — computed from focusHistory (need 2+ days with data)
+        let daysWithData = history.filter { $0.totalSeconds > 0 }
+        if daysWithData.count >= 2,
+           let bestDay = daysWithData.max(by: { $0.totalSeconds < $1.totalSeconds }),
+           let bestDayDate = bestDay.dateValue() {
+            let value = StatsChartHelpers.formatDuration(Int(bestDay.totalSeconds))
+            records.append(PersonalRecord(
+                label: "best day",
+                display: "\(value)  ·  \(dateFormatter.string(from: bestDayDate).lowercased())"
+            ))
+        }
+
+        // Best week — computed from focusHistory (need at least 1 full week of data)
+        if let (weekTotal, weekStart) = computeBestWeek(), weekTotal > 0 {
+            let value = StatsChartHelpers.formatDuration(weekTotal)
+            let end = Calendar.current.date(byAdding: .day, value: 6, to: weekStart) ?? weekStart
+            let dateLabel = "\(weekFormatter.string(from: weekStart).lowercased())–\(weekFormatter.string(from: end).lowercased())"
+            records.append(PersonalRecord(
+                label: "best week",
+                display: "\(value)  ·  \(dateLabel)"
+            ))
+        }
+
+        return records
+    }
+
+    /// Finds the Mon–Sun week with the highest total focus time.
+    /// Returns nil if there isn't at least 1 complete week of data.
+    private func computeBestWeek() -> (Int, Date)? {
+        let calendar = CalendarHelper.mondayFirst
+        let history = appState.focusHistory
+        guard !history.isEmpty else { return nil }
+
+        let dates = history.compactMap { $0.dateValue() }
+        guard let earliest = dates.min(), let latest = dates.max() else { return nil }
+
+        // Need at least 7 days span
+        let span = calendar.dateComponents([.day], from: earliest, to: latest).day ?? 0
+        guard span >= 6 else { return nil }
+
+        // Get the Monday of the earliest date
+        var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: earliest)
+        components.weekday = 2
+        guard var weekStart = calendar.date(from: components) else { return nil }
+
+        let today = Date()
+        var bestTotal = 0
+        var bestStart: Date = weekStart
+
+        while weekStart <= today {
+            var weekTotal = 0
+            for i in 0..<7 {
+                guard let day = calendar.date(byAdding: .day, value: i, to: weekStart) else { continue }
+                let key = DailyFocusEntry.dateFormatter.string(from: day)
+                if let entry = history.first(where: { $0.date == key }) {
+                    weekTotal += Int(entry.totalSeconds)
+                }
+            }
+            if weekTotal > bestTotal {
+                bestTotal = weekTotal
+                bestStart = weekStart
+            }
+            guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: weekStart) else { break }
+            weekStart = next
+        }
+
+        return bestTotal > 0 ? (bestTotal, bestStart) : nil
+    }
+
+    private func recordRow(label: String, display: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundColor(Color.white.opacity(0.4))
+
+            Spacer()
+
+            Text(display)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Color.white.opacity(0.7))
+                .monospacedDigit()
+        }
+    }
+
+    // MARK: - Avg Per Week (helper)
 
     private func calculateAvgWeeklySeconds() -> Int {
         let totalSeconds = Int(appState.totalLifetimeSeconds)
@@ -144,14 +331,12 @@ struct LifetimeStatsView: View {
         let calendar = CalendarHelper.mondayFirst
         let today = Date()
 
-        // Find earliest entry date
         let earliestDate: Date? = appState.focusHistory
             .compactMap { $0.dateValue() }
             .min()
 
         guard let startDate = earliestDate else { return 0 }
 
-        // Calculate weeks between first entry and today (minimum 1)
         let daysBetween = max(calendar.dateComponents([.day], from: startDate, to: today).day ?? 1, 1)
         let weeks = max(Double(daysBetween) / 7.0, 1.0)
 
@@ -224,15 +409,12 @@ struct LifetimeStatsView: View {
         let calendar = Calendar.current
         let today = Date()
 
-        // Find earliest month from focus history, or use current month
         let earliestDate: Date? = appState.focusHistory
             .compactMap { $0.dateValue() }
             .min()
 
-        // Start from earliest month, or current month if no history
         let startDate = earliestDate ?? today
 
-        // Calculate months between start and now
         let startComponents = calendar.dateComponents([.year, .month], from: startDate)
         let endComponents = calendar.dateComponents([.year, .month], from: today)
 
@@ -240,7 +422,7 @@ struct LifetimeStatsView: View {
               let endMonth = calendar.date(from: endComponents) else { return [] }
 
         let monthDiff = calendar.dateComponents([.month], from: startMonth, to: endMonth).month ?? 0
-        let monthCount = min(max(monthDiff + 1, 1), 6) // 1-6 months
+        let monthCount = min(max(monthDiff + 1, 1), 6)
 
         let labelFormatter = DateFormatter()
         labelFormatter.dateFormat = "MMM yyyy"
@@ -255,24 +437,20 @@ struct LifetimeStatsView: View {
 
             let monthComponents = calendar.dateComponents([.year, .month], from: monthDate)
 
-            // Filter focus history entries for this month
             let entriesInMonth = appState.focusHistory.filter { entry in
                 guard let entryDate = entry.dateValue() else { return false }
                 let entryComponents = calendar.dateComponents([.year, .month], from: entryDate)
                 return entryComponents.year == monthComponents.year && entryComponents.month == monthComponents.month
             }
 
-            // Sum totals
             var totalSeconds = entriesInMonth.reduce(0.0) { $0 + $1.totalSeconds }
             let sessionCount = entriesInMonth.reduce(0) { $0 + $1.sessionCount }
 
-            // Include today's live seconds if this is the current month
             let todayComponents = calendar.dateComponents([.year, .month], from: today)
             if monthComponents.year == todayComponents.year && monthComponents.month == todayComponents.month {
                 let todayKey = DailyFocusEntry.todayKey()
                 let todayInHistory = entriesInMonth.first { $0.date == todayKey }
                 if todayInHistory != nil {
-                    // Replace history value with live value
                     totalSeconds = totalSeconds - (todayInHistory?.totalSeconds ?? 0) + appState.todayFocusSeconds
                 } else {
                     totalSeconds += appState.todayFocusSeconds
@@ -289,6 +467,6 @@ struct LifetimeStatsView: View {
             ))
         }
 
-        return months // Most recent first (offset 0 = current month)
+        return months
     }
 }
