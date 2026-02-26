@@ -7,9 +7,17 @@ struct WeeklyStatsView: View {
 
     private var maxWeeksBack: Int {
         let calendar = CalendarHelper.mondayFirst
-        guard let regDate = appState.registrationDate else { return 0 }
-        let weeks = calendar.dateComponents([.weekOfYear], from: regDate, to: Date()).weekOfYear ?? 0
-        return max(weeks, 0)
+        guard let earliestDate = appState.focusHistory
+            .compactMap({ $0.dateValue() })
+            .min() else { return 0 }
+        var startComp = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: earliestDate)
+        startComp.weekday = 2
+        var todayComp = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        todayComp.weekday = 2
+        guard let startMonday = calendar.date(from: startComp),
+              let todayMonday = calendar.date(from: todayComp) else { return 0 }
+        let weeks = calendar.dateComponents([.day], from: startMonday, to: todayMonday).day.map { $0 / 7 } ?? 0
+        return min(max(weeks, 0), 4)
     }
 
     var body: some View {
@@ -34,6 +42,8 @@ struct WeeklyStatsView: View {
                 // Empty state
                 streakTrendHeader
                 emptyWeekCard
+                weekNavigation
+                    .padding(.top, CTRLSpacing.sm)
             }
         }
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in
@@ -86,8 +96,11 @@ struct WeeklyStatsView: View {
     // MARK: - Empty State
 
     private var emptyWeekCard: some View {
-        SurfaceCard(padding: CTRLSpacing.lg, cornerRadius: CTRLSpacing.cardRadius) {
-            Text("your first session will show up here")
+        let hasAnyHistory = !appState.focusHistory.filter({ $0.totalSeconds > 0 }).isEmpty
+        let message = hasAnyHistory ? "no sessions this week" : "your first session will show up here"
+
+        return SurfaceCard(padding: CTRLSpacing.lg, cornerRadius: CTRLSpacing.cardRadius) {
+            Text(message)
                 .font(.system(size: 13))
                 .foregroundColor(Color.white.opacity(0.4))
                 .frame(maxWidth: .infinity)

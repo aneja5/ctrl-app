@@ -331,11 +331,11 @@ struct LifetimeStatsView: View {
         let calendar = CalendarHelper.mondayFirst
         let today = Date()
 
-        let earliestDate: Date? = appState.focusHistory
+        // Use registrationDate for accurate avg (focusHistory may be trimmed to 90 days)
+        let earliestHistoryDate = appState.focusHistory
             .compactMap { $0.dateValue() }
             .min()
-
-        guard let startDate = earliestDate else { return 0 }
+        guard let startDate = appState.registrationDate ?? earliestHistoryDate else { return 0 }
 
         let daysBetween = max(calendar.dateComponents([.day], from: startDate, to: today).day ?? 1, 1)
         let weeks = max(Double(daysBetween) / 7.0, 1.0)

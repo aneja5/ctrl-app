@@ -24,9 +24,11 @@ class CTRLMonitorExtension: DeviceActivityMonitor {
         let activityName = activity.rawValue
 
         // Debug timestamps
+        #if DEBUG
         defaults.set(Date().description, forKey: "debug_lastIntervalDidStart")
         defaults.set(activityName, forKey: "debug_lastActivityName")
         defaults.synchronize()
+        #endif
 
         guard activityName.hasPrefix("ctrl_schedule_") else { return }
         let scheduleId = String(activityName.dropFirst("ctrl_schedule_".count))
@@ -45,7 +47,9 @@ class CTRLMonitorExtension: DeviceActivityMonitor {
            let selection = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) {
             // Apply shields via mode token indirection
             store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
-            store.shield.applicationCategories = selection.categoryTokens.isEmpty ? nil : .specific(selection.categoryTokens)
+            // Category fallback only for pre-migration modes with no expanded applicationTokens
+            store.shield.applicationCategories = (selection.applicationTokens.isEmpty && !selection.categoryTokens.isEmpty)
+                ? .specific(selection.categoryTokens) : nil
             store.shield.webDomains = selection.webDomainTokens.isEmpty ? nil : selection.webDomainTokens
 
             defaults.set(scheduleId, forKey: "active_schedule_id")
@@ -58,7 +62,9 @@ class CTRLMonitorExtension: DeviceActivityMonitor {
         if let legacyData = defaults.data(forKey: "schedule_selection_\(scheduleId)"),
            let selection = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: legacyData) {
             store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
-            store.shield.applicationCategories = selection.categoryTokens.isEmpty ? nil : .specific(selection.categoryTokens)
+            // Category fallback only for pre-migration modes with no expanded applicationTokens
+            store.shield.applicationCategories = (selection.applicationTokens.isEmpty && !selection.categoryTokens.isEmpty)
+                ? .specific(selection.categoryTokens) : nil
             store.shield.webDomains = selection.webDomainTokens.isEmpty ? nil : selection.webDomainTokens
 
             defaults.set(scheduleId, forKey: "active_schedule_id")
@@ -78,8 +84,10 @@ class CTRLMonitorExtension: DeviceActivityMonitor {
         guard activityName.hasPrefix("ctrl_schedule_") else { return }
         let scheduleId = String(activityName.dropFirst("ctrl_schedule_".count))
 
+        #if DEBUG
         defaults.set(Date().description, forKey: "debug_lastIntervalDidEnd")
         defaults.synchronize()
+        #endif
 
         // Check requireNFCToEnd — simple bool key
         if defaults.bool(forKey: "schedule_requireNFC_\(scheduleId)") {

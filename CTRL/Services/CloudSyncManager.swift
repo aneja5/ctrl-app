@@ -25,6 +25,7 @@ final class CloudSyncManager {
     /// Pushes current local state to Supabase. Fire-and-forget.
     /// Call after: mode CRUD, session end, emergency unlock use.
     func syncToCloud(appState: AppState) {
+        guard featureEnabled(.cloudSync) else { return }
         guard let email = appState.userEmail else { return }
 
         Task {
@@ -53,7 +54,8 @@ final class CloudSyncManager {
                     modeNames: appState.modes.map { $0.name },
                     focusHistory: focusEntries,
                     emergencyUnlocksRemaining: appState.emergencyUnlocksRemaining,
-                    emergencyResetDate: appState.lastEmergencyResetDate,
+                    lastOverrideUsedDate: appState.lastOverrideUsedDate,
+                    overrideEarnBackDays: appState.overrideEarnBackDays,
                     deviceId: deviceId,
                     encryptedModesData: encryptedBlob,
                     strictModeEnabled: appState.strictModeEnabled,
@@ -65,7 +67,10 @@ final class CloudSyncManager {
                     bestDaySeconds: appState.bestDaySeconds,
                     bestDayDate: appState.bestDayDate,
                     bestWeekSeconds: appState.bestWeekSeconds,
-                    bestWeekStart: appState.bestWeekStart
+                    bestWeekStart: appState.bestWeekStart,
+                    cumulativeLifetimeSeconds: Int(appState.cumulativeLifetimeSeconds),
+                    cumulativeLifetimeSessions: appState.cumulativeLifetimeSessions,
+                    cumulativeLifetimeDays: appState.cumulativeLifetimeDays
                 )
 
                 try await SupabaseManager.shared.saveUserData(data)
@@ -126,6 +131,7 @@ final class CloudSyncManager {
     /// Merges cloud data into local AppState.
     /// Tries to decrypt encrypted app selections first; falls back to name-only restore.
     func restoreFromCloud(_ cloudData: CloudUserData, into appState: AppState) {
+        guard featureEnabled(.cloudSync) else { return }
         // Try decrypting encrypted modes (includes app selections)
         if let encrypted = cloudData.encryptedModesData,
            let decryptedModes = EncryptionManager.decryptModes(
@@ -135,7 +141,10 @@ final class CloudSyncManager {
            ) {
             // Full restore — modes WITH app selections
             appState.modes = decryptedModes
-            appState.activeModeId = decryptedModes.first?.id
+            // Preserve user's mode selection if it still exists in restored modes
+            if !decryptedModes.contains(where: { $0.id == appState.activeModeId }) {
+                appState.activeModeId = decryptedModes.first?.id
+            }
 
             #if DEBUG
             print("[CloudSync] Restored \(decryptedModes.count) modes with encrypted app selections")
@@ -150,8 +159,16 @@ final class CloudSyncManager {
             }
 
             if !restoredModes.isEmpty {
+                // Capture current mode name before overwriting (name-only restore creates new UUIDs)
+                let previousModeName = appState.activeMode?.name
                 appState.modes = restoredModes
-                appState.activeModeId = restoredModes.first?.id
+                // Try to preserve mode selection by name, else fall back to first
+                if let name = previousModeName,
+                   let match = restoredModes.first(where: { $0.name.lowercased() == name.lowercased() }) {
+                    appState.activeModeId = match.id
+                } else {
+                    appState.activeModeId = restoredModes.first?.id
+                }
             }
 
             #if DEBUG
@@ -165,12 +182,17 @@ final class CloudSyncManager {
         }
         appState.focusHistory = restoredHistory
 
-        // Restore emergency unlocks
-        appState.emergencyUnlocksRemaining = cloudData.emergencyUnlocksRemaining
-        appState.lastEmergencyResetDate = cloudData.emergencyResetDate
+        // Restore emergency unlocks (v2 earn-back system)
+        appState.emergencyUnlocksRemaining = min(cloudData.emergencyUnlocksRemaining, AppConstants.maxOverrides)
+        appState.lastOverrideUsedDate = cloudData.lastOverrideUsedDate
+        appState.overrideEarnBackDays = cloudData.overrideEarnBackDays ?? 0
 
-        // Restore strict mode preference
-        appState.strictModeEnabled = cloudData.strictModeEnabled ?? false
+        // Restore strict mode preference (only if feature flag is on)
+        if featureEnabled(.strictMode) {
+            appState.strictModeEnabled = cloudData.strictModeEnabled ?? false
+        } else {
+            appState.strictModeEnabled = false
+        }
 
         // Restore streak data
         appState.currentStreak = cloudData.currentStreak ?? 0
@@ -184,6 +206,25 @@ final class CloudSyncManager {
         appState.bestDayDate = cloudData.bestDayDate
         appState.bestWeekSeconds = cloudData.bestWeekSeconds ?? 0
         appState.bestWeekStart = cloudData.bestWeekStart
+
+        // Restore cumulative lifetime counters
+        appState.cumulativeLifetimeSeconds = TimeInterval(cloudData.cumulativeLifetimeSeconds ?? 0)
+        appState.cumulativeLifetimeSessions = cloudData.cumulativeLifetimeSessions ?? 0
+        appState.cumulativeLifetimeDays = cloudData.cumulativeLifetimeDays ?? 0
+
+        // Backfill from restored history if cloud had no cumulative data
+        if appState.cumulativeLifetimeSeconds == 0
+            && appState.cumulativeLifetimeSessions == 0
+            && !appState.focusHistory.isEmpty {
+            let historySeconds = appState.focusHistory.reduce(0.0) { $0 + $1.totalSeconds }
+            let historySessions = appState.focusHistory.reduce(0) { $0 + $1.sessionCount }
+            let historyDays = appState.focusHistory.filter { $0.totalSeconds > 0 }.count
+            if historySeconds > 0 {
+                appState.cumulativeLifetimeSeconds = historySeconds
+                appState.cumulativeLifetimeSessions = historySessions
+                appState.cumulativeLifetimeDays = historyDays
+            }
+        }
 
         // Recalculate streak from restored history
         appState.recalculateStreakFromHistory()

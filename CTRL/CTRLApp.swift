@@ -9,7 +9,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        if FeatureFlags.schedulesEnabled {
+        if featureEnabled(.schedules) {
             BGTaskScheduler.shared.register(
                 forTaskWithIdentifier: "in.getctrl.app.schedule-check",
                 using: nil
@@ -59,6 +59,12 @@ struct CTRLApp: App {
     @StateObject private var nfcManager = NFCManager()
     @StateObject private var blockingManager = BlockingManager()
     @StateObject private var scheduleManager = ScheduleManager()
+
+    init() {
+        #if DEBUG
+        FeatureService.shared.printStatus()
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup {

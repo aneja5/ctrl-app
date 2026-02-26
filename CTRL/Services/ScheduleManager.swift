@@ -214,7 +214,9 @@ class ScheduleManager: ObservableObject {
                 // Re-apply shields (idempotent — ensures consistency after reboot/crash)
                 let selection = activeMode.appSelection
                 store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
-                store.shield.applicationCategories = selection.categoryTokens.isEmpty ? nil : .specific(selection.categoryTokens)
+                // Category fallback only for pre-migration modes with no expanded applicationTokens
+                store.shield.applicationCategories = (selection.applicationTokens.isEmpty && !selection.categoryTokens.isEmpty)
+                    ? .specific(selection.categoryTokens) : nil
                 store.shield.webDomains = selection.webDomainTokens.isEmpty ? nil : selection.webDomainTokens
                 #if DEBUG
                 print("[ScheduleManager]   '\(activeSchedule.name)' — still active, maintaining shields")
@@ -260,7 +262,9 @@ class ScheduleManager: ObservableObject {
             let mode = winner.mode
             let selection = mode.appSelection
             store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
-            store.shield.applicationCategories = selection.categoryTokens.isEmpty ? nil : .specific(selection.categoryTokens)
+            // Category fallback only for pre-migration modes with no expanded applicationTokens
+            store.shield.applicationCategories = (selection.applicationTokens.isEmpty && !selection.categoryTokens.isEmpty)
+                ? .specific(selection.categoryTokens) : nil
             store.shield.webDomains = selection.webDomainTokens.isEmpty ? nil : selection.webDomainTokens
 
             let scheduleIdString = schedule.id.uuidString
@@ -662,7 +666,7 @@ class ScheduleManager: ObservableObject {
     // MARK: - Feature Flag Cleanup
 
     static func cleanupSchedulesIfDisabled() {
-        guard !FeatureFlags.schedulesEnabled else { return }
+        guard !featureEnabled(.schedules) else { return }
         DeviceActivityCenter().stopMonitoring()
         ManagedSettingsStore(named: .init("schedule")).clearAllSettings()
         let shared = UserDefaults(suiteName: "group.in.getctrl.app")

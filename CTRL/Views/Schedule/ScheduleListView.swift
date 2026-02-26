@@ -39,7 +39,7 @@ struct ScheduleListView: View {
                         scheduleList
 
                         // Create button (when list exists)
-                        if appState.schedules.count < AppState.maxSchedules {
+                        if appState.schedules.count < AppConstants.maxSchedules {
                             createButton
                         }
                     }

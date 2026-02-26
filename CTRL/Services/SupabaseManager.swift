@@ -12,7 +12,9 @@ struct CloudUserData: Codable {
     let modeNames: [String]
     let focusHistory: [CloudFocusEntry]
     let emergencyUnlocksRemaining: Int
-    let emergencyResetDate: Date?
+    let emergencyResetDate: Date?          // Legacy — kept for backward compat
+    let lastOverrideUsedDate: String?
+    let overrideEarnBackDays: Int?
     let deviceId: String?
     let encryptedModesData: String?
     let strictModeEnabled: Bool?
@@ -26,6 +28,9 @@ struct CloudUserData: Codable {
     let bestDayDate: Date?
     let bestWeekSeconds: Int?
     let bestWeekStart: Date?
+    let cumulativeLifetimeSeconds: Int?
+    let cumulativeLifetimeSessions: Int?
+    let cumulativeLifetimeDays: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, email
@@ -34,6 +39,8 @@ struct CloudUserData: Codable {
         case focusHistory = "focus_history"
         case emergencyUnlocksRemaining = "emergency_unlocks_remaining"
         case emergencyResetDate = "emergency_reset_date"
+        case lastOverrideUsedDate = "last_override_used_date"
+        case overrideEarnBackDays = "override_earn_back_days"
         case deviceId = "device_id"
         case encryptedModesData = "encrypted_modes_data"
         case strictModeEnabled = "strict_mode_enabled"
@@ -47,6 +54,9 @@ struct CloudUserData: Codable {
         case bestDayDate = "best_day_date"
         case bestWeekSeconds = "best_week_seconds"
         case bestWeekStart = "best_week_start"
+        case cumulativeLifetimeSeconds = "cumulative_lifetime_seconds"
+        case cumulativeLifetimeSessions = "cumulative_lifetime_sessions"
+        case cumulativeLifetimeDays = "cumulative_lifetime_days"
     }
 }
 
@@ -58,7 +68,8 @@ struct CloudUserDataWrite: Codable {
     let modeNames: [String]
     let focusHistory: [CloudFocusEntry]
     let emergencyUnlocksRemaining: Int
-    let emergencyResetDate: Date?
+    let lastOverrideUsedDate: String?
+    let overrideEarnBackDays: Int
     let deviceId: String?
     let encryptedModesData: String?
     let strictModeEnabled: Bool
@@ -71,6 +82,9 @@ struct CloudUserDataWrite: Codable {
     let bestDayDate: Date?
     let bestWeekSeconds: Int
     let bestWeekStart: Date?
+    let cumulativeLifetimeSeconds: Int
+    let cumulativeLifetimeSessions: Int
+    let cumulativeLifetimeDays: Int
 
     enum CodingKeys: String, CodingKey {
         case email
@@ -78,7 +92,8 @@ struct CloudUserDataWrite: Codable {
         case modeNames = "mode_names"
         case focusHistory = "focus_history"
         case emergencyUnlocksRemaining = "emergency_unlocks_remaining"
-        case emergencyResetDate = "emergency_reset_date"
+        case lastOverrideUsedDate = "last_override_used_date"
+        case overrideEarnBackDays = "override_earn_back_days"
         case deviceId = "device_id"
         case encryptedModesData = "encrypted_modes_data"
         case strictModeEnabled = "strict_mode_enabled"
@@ -91,6 +106,9 @@ struct CloudUserDataWrite: Codable {
         case bestDayDate = "best_day_date"
         case bestWeekSeconds = "best_week_seconds"
         case bestWeekStart = "best_week_start"
+        case cumulativeLifetimeSeconds = "cumulative_lifetime_seconds"
+        case cumulativeLifetimeSessions = "cumulative_lifetime_sessions"
+        case cumulativeLifetimeDays = "cumulative_lifetime_days"
     }
 }
 
@@ -147,7 +165,12 @@ final class SupabaseManager: ObservableObject {
         let config = Self.loadConfig()
         self.client = SupabaseClient(
             supabaseURL: config.url,
-            supabaseKey: config.anonKey
+            supabaseKey: config.anonKey,
+            options: .init(
+                auth: .init(
+                    emitLocalSessionAsInitialSession: true
+                )
+            )
         )
 
         // Restore session on launch

@@ -16,9 +16,16 @@ struct MonthlyStatsView: View {
     @State private var refreshTick: Int = 0
 
     private var maxMonthsBack: Int {
-        guard let regDate = appState.registrationDate else { return 0 }
-        let months = Calendar.current.dateComponents([.month], from: regDate, to: Date()).month ?? 0
-        return max(months, 0)
+        let calendar = Calendar.current
+        guard let earliestDate = appState.focusHistory
+            .compactMap({ $0.dateValue() })
+            .min() else { return 0 }
+        let startComponents = calendar.dateComponents([.year, .month], from: earliestDate)
+        let todayComponents = calendar.dateComponents([.year, .month], from: Date())
+        guard let startMonthStart = calendar.date(from: startComponents),
+              let todayMonthStart = calendar.date(from: todayComponents) else { return 0 }
+        let months = calendar.dateComponents([.month], from: startMonthStart, to: todayMonthStart).month ?? 0
+        return min(max(months, 0), 12)
     }
 
     var body: some View {
@@ -96,8 +103,11 @@ struct MonthlyStatsView: View {
     // MARK: - Empty State
 
     private var emptyMonthCard: some View {
-        SurfaceCard(padding: CTRLSpacing.lg, cornerRadius: CTRLSpacing.cardRadius) {
-            Text("your first session will show progress here")
+        let hasAnyHistory = !appState.focusHistory.filter({ $0.totalSeconds > 0 }).isEmpty
+        let message = hasAnyHistory ? "nothing this month" : "your first session will show progress here"
+
+        return SurfaceCard(padding: CTRLSpacing.lg, cornerRadius: CTRLSpacing.cardRadius) {
+            Text(message)
                 .font(.system(size: 13))
                 .foregroundColor(Color.white.opacity(0.4))
                 .frame(maxWidth: .infinity)
@@ -120,7 +130,8 @@ struct MonthlyStatsView: View {
                     .monospacedDigit()
 
                 if isEmpty {
-                    Text("your first session will show progress here")
+                    let hasAnyHistory = !appState.focusHistory.filter({ $0.totalSeconds > 0 }).isEmpty
+                    Text(hasAnyHistory ? "nothing this month" : "your first session will show progress here")
                         .font(CTRLFonts.micro)
                         .foregroundColor(Color.white.opacity(0.4))
                 } else {

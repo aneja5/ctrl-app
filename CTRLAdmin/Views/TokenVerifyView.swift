@@ -173,6 +173,8 @@ class NFCVerifyManager: NSObject, ObservableObject, NFCNDEFReaderSessionDelegate
     }
 
     func readerSessionDidBecomeActive(_ session: NFCNDEFReaderSession) {
+        #if DEBUG
         print("[NFCVerify] Session active")
+        #endif
     }
 }

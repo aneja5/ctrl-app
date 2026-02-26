@@ -26,7 +26,7 @@ class NFCManager: NSObject, ObservableObject {
     private var lastScanCompletionTime: Date?
 
     /// Minimum seconds between scan completions to avoid iOS `Code=203` resource errors.
-    private let scanCooldown: TimeInterval = 2.0
+    private let scanCooldown: TimeInterval = AppConstants.nfcScanCooldown
 
     // MARK: - Lifecycle
 
@@ -104,7 +104,7 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
         // Handle timeout gracefully
         if nfcError?.code == .readerSessionInvalidationErrorSessionTimeout {
             DispatchQueue.main.async { [weak self] in
-                self?.errorMessage = "Session timed out. Please try again."
+                self?.errorMessage = "session timed out. try again."
                 self?.completionHandler?(.failure(NFCError.timeout))
                 self?.completionHandler = nil
             }
@@ -130,7 +130,7 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
 
     func readerSession(_ session: NFCNDEFReaderSession, didDetect tags: [NFCNDEFTag]) {
         guard let tag = tags.first else {
-            session.invalidate(errorMessage: "No tag found")
+            session.invalidate(errorMessage: "no tag found. try again.")
             return
         }
 
@@ -138,7 +138,7 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
             guard let self = self else { return }
 
             if let error = error {
-                session.invalidate(errorMessage: "Connection failed: \(error.localizedDescription)")
+                session.invalidate(errorMessage: "couldn't connect to tag. try again.")
                 DispatchQueue.main.async {
                     self.completionHandler?(.failure(error))
                     self.completionHandler = nil
@@ -148,7 +148,7 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
 
             tag.queryNDEFStatus { status, capacity, error in
                 if let error = error {
-                    session.invalidate(errorMessage: "Failed to query tag: \(error.localizedDescription)")
+                    session.invalidate(errorMessage: "couldn't read tag. try again.")
                     DispatchQueue.main.async {
                         self.completionHandler?(.failure(error))
                         self.completionHandler = nil
@@ -158,7 +158,7 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
 
                 switch status {
                 case .notSupported:
-                    session.invalidate(errorMessage: "Tag is not NDEF compatible")
+                    session.invalidate(errorMessage: "this tag isn't compatible with ctrl.")
                     DispatchQueue.main.async {
                         self.completionHandler?(.failure(NFCError.notSupported))
                         self.completionHandler = nil
@@ -167,7 +167,7 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
                 case .readOnly, .readWrite:
                     tag.readNDEF { message, error in
                         if let error = error, (error as? NFCReaderError)?.code != .ndefReaderSessionErrorZeroLengthMessage {
-                            session.invalidate(errorMessage: "Failed to read tag")
+                            session.invalidate(errorMessage: "couldn't read tag. try again.")
                             DispatchQueue.main.async {
                                 self.completionHandler?(.failure(error))
                                 self.completionHandler = nil
@@ -216,7 +216,7 @@ extension NFCManager: NFCNDEFReaderSessionDelegate {
                     }
 
                 @unknown default:
-                    session.invalidate(errorMessage: "Unknown tag status")
+                    session.invalidate(errorMessage: "something went wrong. try again.")
                     DispatchQueue.main.async {
                         self.completionHandler?(.failure(NFCError.unknown))
                         self.completionHandler = nil

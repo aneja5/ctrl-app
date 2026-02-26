@@ -38,6 +38,7 @@
 		C509EF1120631EFEB10E2D65 /* CTRLAdminApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E1A1ABA2B0A6C16FD9562C /* CTRLAdminApp.swift */; };
 		D4000001000000001 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000002 /* OnboardingView.swift */; };
 		D4000001000000003 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000004 /* HomeView.swift */; };
+		BP0000010000000001 /* BreakPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BP0000010000000002 /* BreakPillView.swift */; };
 		D4000001000000005 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000006 /* SettingsView.swift */; };
 		D4000001000000007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001000000008 /* RootView.swift */; };
 		D5A1B2C3D4E5F60718293A50 /* CTRLMonitorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A1B2C3D4E5F60718293A4B /* CTRLMonitorExtension.swift */; };
@@ -67,7 +68,8 @@
 		K4000001000000001 /* MonthlyStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = K4000001000000002 /* MonthlyStatsView.swift */; };
 		K6000001000000001 /* LifetimeStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = K6000001000000002 /* LifetimeStatsView.swift */; };
 		N1000001000000001 /* NavBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = N1000001000000002 /* NavBar.swift */; };
-		P1000001000000001 /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1000001000000002 /* FeatureFlags.swift */; };
+		P1000001000000001 /* FeatureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1000001000000002 /* FeatureService.swift */; };
+		P1000001000000003 /* AppConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1000001000000004 /* AppConstants.swift */; };
 		Q1000001000000001 /* CountdownUnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q1000001000000002 /* CountdownUnlockView.swift */; };
 /* End PBXBuildFile section */
 
@@ -153,6 +155,7 @@
 		CE55B037DC8188A0D86921D1 /* NFCWriterManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NFCWriterManager.swift; sourceTree = "<group>"; };
 		D4000001000000002 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		D4000001000000004 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		BP0000010000000002 /* BreakPillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreakPillView.swift; sourceTree = "<group>"; };
 		D4000001000000006 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D4000001000000008 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		D5A1B2C3D4E5F60718293A4B /* CTRLMonitorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CTRLMonitorExtension.swift; sourceTree = "<group>"; };
@@ -181,7 +184,8 @@
 		K4000001000000002 /* MonthlyStatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthlyStatsView.swift; sourceTree = "<group>"; };
 		K6000001000000002 /* LifetimeStatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LifetimeStatsView.swift; sourceTree = "<group>"; };
 		N1000001000000002 /* NavBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavBar.swift; sourceTree = "<group>"; };
-		P1000001000000002 /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
+		P1000001000000002 /* FeatureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureService.swift; sourceTree = "<group>"; };
+		P1000001000000004 /* AppConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConstants.swift; sourceTree = "<group>"; };
 		Q1000001000000002 /* CountdownUnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountdownUnlockView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -241,7 +245,8 @@
 			isa = PBXGroup;
 			children = (
 				E947189F9E80DD127F0F0C60 /* Config.plist */,
-				P1000001000000002 /* FeatureFlags.swift */,
+				P1000001000000002 /* FeatureService.swift */,
+				P1000001000000004 /* AppConstants.swift */,
 			);
 			name = Config;
 			path = Config;
@@ -440,6 +445,7 @@
 			children = (
 				D4000001000000002 /* OnboardingView.swift */,
 				D4000001000000004 /* HomeView.swift */,
+				BP0000010000000002 /* BreakPillView.swift */,
 				D4000001000000006 /* SettingsView.swift */,
 				D4000001000000008 /* RootView.swift */,
 				F6000001000000002 /* EditModeView.swift */,
@@ -686,6 +692,7 @@
 				C3000001000000001 /* CTRLTheme.swift in Sources */,
 				D4000001000000001 /* OnboardingView.swift in Sources */,
 				D4000001000000003 /* HomeView.swift in Sources */,
+				BP0000010000000001 /* BreakPillView.swift in Sources */,
 				D4000001000000005 /* SettingsView.swift in Sources */,
 				D4000001000000007 /* RootView.swift in Sources */,
 				F6000001000000001 /* EditModeView.swift in Sources */,
@@ -713,7 +720,8 @@
 				E6F7A8B9C0D1E2F3A4B5C6E4 /* ScheduleModePickerView.swift in Sources */,
 				601789139A7A4834347C6426 /* CalendarHelper.swift in Sources */,
 				N1000001000000001 /* NavBar.swift in Sources */,
-				P1000001000000001 /* FeatureFlags.swift in Sources */,
+				P1000001000000001 /* FeatureService.swift in Sources */,
+				P1000001000000003 /* AppConstants.swift in Sources */,
 				Q1000001000000001 /* CountdownUnlockView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -978,8 +986,8 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1008,8 +1016,8 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

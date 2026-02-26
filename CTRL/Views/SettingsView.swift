@@ -20,7 +20,8 @@ struct SettingsView: View {
     @State private var activeAlert: ActiveAlert? = nil
     @State private var isDeletingData = false
     @State private var expandedFAQ: String? = nil
-    @State private var resetCountdown: String = ""
+    @State private var emergencyExpanded: Bool = false
+    @State private var showDeleteError = false
 
     var body: some View {
         NavigationStack {
@@ -37,16 +38,17 @@ struct SettingsView: View {
                     accountSection
 
                     // Session
-                    sessionSection
+                    if featureEnabled(.strictMode) {
+                        sessionSection
+                    }
 
                     // Override
-                    overrideSection
+                    if featureEnabled(.emergencyOverrides) {
+                        overrideSection
+                    }
 
                     // FAQ
                     faqSection
-
-                    // Cloud Sync
-                    cloudSyncSection
 
                     // Support
                     supportSection
@@ -60,7 +62,7 @@ struct SettingsView: View {
             }
         }
         .alert(
-            activeAlert == .override ? "override session" :
+            activeAlert == .override ? "use emergency override?" :
             activeAlert == .signOut ? "sign out?" :
             activeAlert == .strictMode ? "enable strict mode?" : "delete all data?",
             isPresented: Binding(
@@ -72,7 +74,7 @@ struct SettingsView: View {
             switch alert {
             case .override:
                 Button("cancel", role: .cancel) { }
-                Button("override", role: .destructive) {
+                Button("use override", role: .destructive) {
                     if appState.useEmergencyUnlock() {
                         let generator = UINotificationFeedbackGenerator()
                         generator.notificationOccurred(.warning)
@@ -80,7 +82,7 @@ struct SettingsView: View {
                         if blockingManager.isBlocking {
                             blockingManager.deactivateBlocking()
                         }
-                        if FeatureFlags.schedulesEnabled && scheduleManager.activeScheduleId != nil {
+                        if featureEnabled(.schedules) && scheduleManager.activeScheduleId != nil {
                             scheduleManager.endActiveSession()
                         }
                     }
@@ -102,15 +104,17 @@ struct SettingsView: View {
                     generator.impactOccurred()
                     appState.strictModeEnabled = true
                     appState.saveState()
-                    Task { @MainActor in
-                        CloudSyncManager.shared.syncToCloud(appState: appState)
+                    if featureEnabled(.cloudSync) {
+                        Task { @MainActor in
+                            CloudSyncManager.shared.syncToCloud(appState: appState)
+                        }
                     }
                 }
             }
         } message: { alert in
             switch alert {
             case .override:
-                Text("end session without your ctrl? \(appState.emergencyUnlocksRemaining) overrides remaining.")
+                Text("this will end your session immediately. you have \(appState.emergencyUnlocksRemaining) remaining. using one resets your 7-day earn-back progress.")
             case .signOut:
                 Text("your modes and stats are safely synced to the cloud. sign back in anytime to pick up where you left off.")
             case .deleteData:
@@ -118,6 +122,12 @@ struct SettingsView: View {
             case .strictMode:
                 Text("while in a session, you won't be able to delete apps from your device. you can still use emergency overrides if needed.")
             }
+        }
+        .alert("couldn't delete data", isPresented: $showDeleteError) {
+            Button("try again") { performDeleteData() }
+            Button("cancel", role: .cancel) { }
+        } message: {
+            Text("check your internet connection and try again.")
         }
         .navigationBarHidden(true)
         } // NavigationStack
@@ -212,8 +222,10 @@ struct SettingsView: View {
                                     generator.impactOccurred()
                                     appState.strictModeEnabled = false
                                     appState.saveState()
-                                    Task { @MainActor in
-                                        CloudSyncManager.shared.syncToCloud(appState: appState)
+                                    if featureEnabled(.cloudSync) {
+                                        Task { @MainActor in
+                                            CloudSyncManager.shared.syncToCloud(appState: appState)
+                                        }
                                     }
                                 }
                             }
@@ -228,7 +240,7 @@ struct SettingsView: View {
                     if blockingManager.isBlocking {
                         CTRLDivider()
 
-                        Text("can't change during an active session")
+                        Text("strict mode can't be changed during a session")
                             .font(CTRLFonts.micro)
                             .foregroundColor(CTRLColors.textTertiary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -246,67 +258,131 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
             CTRLSectionHeader(title: "Override")
 
-            SurfaceCard(padding: CTRLSpacing.cardPadding, cornerRadius: CTRLSpacing.cardRadius) {
-                VStack(spacing: CTRLSpacing.md) {
-                    HStack {
-                        Text("remaining")
-                            .font(CTRLFonts.bodyFont)
-                            .foregroundColor(CTRLColors.textSecondary)
+            SurfaceCard(padding: 0, cornerRadius: CTRLSpacing.cardRadius) {
+                VStack(spacing: 0) {
+                    // Collapsed header — tap to expand
+                    Button(action: {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            emergencyExpanded.toggle()
+                        }
+                    }) {
+                        HStack(spacing: CTRLSpacing.sm) {
+                            Image(systemName: "shield.lefthalf.filled")
+                                .font(.system(size: 16))
+                                .foregroundColor(overrideColor)
 
-                        Spacer()
-
-                        Text("\(appState.emergencyUnlocksRemaining)/5")
-                            .font(CTRLFonts.bodyFont)
-                            .foregroundColor(CTRLColors.textPrimary)
-                            .monospacedDigit()
-                    }
-
-                    if appState.emergencyUnlocksRemaining < 5 {
-                        HStack {
-                            Text("resets in")
+                            Text("emergency overrides")
                                 .font(CTRLFonts.bodyFont)
-                                .foregroundColor(CTRLColors.textSecondary)
+                                .foregroundColor(CTRLColors.textPrimary)
 
                             Spacer()
 
-                            Text(resetCountdown)
+                            Text("\(appState.emergencyUnlocksRemaining)")
+                                .font(CTRLFonts.bodyFont)
+                                .foregroundColor(overrideColor)
+                                .monospacedDigit()
+
+                            Image(systemName: emergencyExpanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(CTRLColors.textTertiary)
+                        }
+                        .padding(CTRLSpacing.cardPadding)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    if emergencyExpanded {
+                        CTRLDivider()
+                            .padding(.horizontal, CTRLSpacing.cardPadding)
+
+                        VStack(alignment: .leading, spacing: CTRLSpacing.md) {
+                            // 5-dot visualization
+                            HStack(spacing: CTRLSpacing.xs) {
+                                ForEach(0..<AppConstants.maxOverrides, id: \.self) { index in
+                                    Circle()
+                                        .fill(index < appState.emergencyUnlocksRemaining ? overrideColor : CTRLColors.surface2)
+                                        .frame(width: 10, height: 10)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(index < appState.emergencyUnlocksRemaining ? overrideColor.opacity(0.5) : CTRLColors.border, lineWidth: 1)
+                                        )
+                                }
+                                Spacer()
+                            }
+
+                            // Earn-back progress (only if below max and has used an override)
+                            if appState.emergencyUnlocksRemaining < AppConstants.maxOverrides,
+                               appState.lastOverrideUsedDate != nil {
+                                VStack(alignment: .leading, spacing: CTRLSpacing.micro) {
+                                    GeometryReader { geo in
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .fill(CTRLColors.surface2)
+                                                .frame(height: 6)
+
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .fill(CTRLColors.accent)
+                                                .frame(
+                                                    width: geo.size.width * CGFloat(appState.overrideEarnBackDays) / CGFloat(AppConstants.earnBackStreakDays),
+                                                    height: 6
+                                                )
+                                        }
+                                    }
+                                    .frame(height: 6)
+
+                                    Text(earnBackLabel)
+                                        .font(CTRLFonts.micro)
+                                        .foregroundColor(CTRLColors.textTertiary)
+                                }
+                            } else if appState.emergencyUnlocksRemaining >= AppConstants.maxOverrides {
+                                Text("fully stocked")
+                                    .font(CTRLFonts.micro)
+                                    .foregroundColor(CTRLColors.textTertiary)
+                            }
+
+                            // Explanation
+                            Text("earn overrides back by focusing 10+ min for 7 consecutive days after using one.")
                                 .font(CTRLFonts.bodySmall)
                                 .foregroundColor(CTRLColors.textTertiary)
-                                .monospacedDigit()
-                        }
-                        .onAppear { updateResetCountdown() }
-                        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-                            updateResetCountdown()
-                        }
-                    }
+                                .fixedSize(horizontal: false, vertical: true)
 
-                    if (blockingManager.isBlocking || (FeatureFlags.schedulesEnabled && scheduleManager.activeScheduleId != nil)) && appState.emergencyUnlocksRemaining > 0 {
-                        CTRLDivider()
+                            // Use override button (only during session, when overrides > 0)
+                            if (blockingManager.isBlocking || (featureEnabled(.schedules) && scheduleManager.activeScheduleId != nil)) && appState.emergencyUnlocksRemaining > 0 {
+                                CTRLDivider()
 
-                        Button(action: { activeAlert = .override }) {
-                            Text("end session without ctrl")
-                                .font(CTRLFonts.bodySmall)
-                                .foregroundColor(CTRLColors.accent)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                Button(action: { activeAlert = .override }) {
+                                    Text("use emergency override")
+                                        .font(CTRLFonts.bodySmall)
+                                        .foregroundColor(CTRLColors.accent)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
                         }
+                        .padding(CTRLSpacing.cardPadding)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
             }
         }
     }
 
-    private func updateResetCountdown() {
-        guard let resetDate = appState.nextOverrideResetDate() else {
-            resetCountdown = ""
-            return
+    private var overrideColor: Color {
+        switch appState.emergencyUnlocksRemaining {
+        case 0: return CTRLColors.destructive
+        case 1: return Color.orange
+        default: return CTRLColors.accent
         }
+    }
 
-        let components = Calendar.current.dateComponents([.day, .hour, .minute], from: Date(), to: resetDate)
-        let d = components.day ?? 0
-        let h = components.hour ?? 0
-        let m = components.minute ?? 0
-
-        resetCountdown = String(format: "%02dd %02dh %02dm", d, h, m)
+    private var earnBackLabel: String {
+        let days = appState.overrideEarnBackDays
+        let remaining = AppConstants.earnBackStreakDays - days
+        if days == 0 {
+            return "focus 7 days to earn another"
+        } else if remaining == 1 {
+            return "\(days) of 7 days — 1 more to go"
+        } else {
+            return "\(days) of 7 days to earn another"
+        }
     }
 
     // MARK: - FAQ Section
@@ -319,48 +395,96 @@ struct SettingsView: View {
                 VStack(spacing: 0) {
                     faqRow(
                         id: "what",
-                        question: "What is CTRL?",
-                        answer: "CTRL helps you create focus time by pausing distracting apps. Tap your CTRL on your phone to start a session, tap again to end it. A simple, physical way to set boundaries."
+                        question: "what is ctrl?",
+                        answer: "ctrl helps you take back your time by pausing distracting apps. tap your tag to start a focus session, tap again to end it. a simple, physical ritual to set boundaries."
                     )
 
                     CTRLDivider()
 
                     faqRow(
-                        id: "device",
-                        question: "How does the device work?",
-                        answer: "Your CTRL has a secure chip inside. When you tap it on your phone, the app checks it's genuine and starts or ends your focus session. Everything happens on your device. No internet needed."
+                        id: "end",
+                        question: "how do I end a session?",
+                        answer: "tap your ctrl tag on your phone again — the app will end the session and unblock your apps instantly. if you started without a tag, you can use the 60-second countdown or an emergency override in settings."
                     )
 
                     CTRLDivider()
 
                     faqRow(
-                        id: "share",
-                        question: "Can I share it with others?",
-                        answer: "Sure. Any genuine CTRL works with any account. You can pass it around to roommates, family, or friends so multiple people can use it across their phones."
+                        id: "notag",
+                        question: "can I use ctrl without the tag?",
+                        answer: "yes. long-press the lock in button to start a session without your tag. you'll still need to tap your tag to end it, or use the countdown timer."
                     )
 
                     CTRLDivider()
 
                     faqRow(
-                        id: "lost",
-                        question: "What if I lose my CTRL?",
-                        answer: "Just order a new one from getctrl.in. There's no pairing step. Any authentic CTRL will work instantly with your app."
+                        id: "modes",
+                        question: "what are modes?",
+                        answer: "modes let you block different apps for different situations. focus for work, sleep for bedtime, detox for a full break. pick the one that fits your moment."
+                    )
+
+                    CTRLDivider()
+
+                    faqRow(
+                        id: "strict",
+                        question: "what is strict mode?",
+                        answer: "when enabled, you can't delete apps from your phone during a session. it's an extra layer for when you really need to stay locked in. toggle it in settings."
                     )
 
                     CTRLDivider()
 
                     faqRow(
                         id: "override",
-                        question: "What are emergency overrides?",
-                        answer: "You have 5 emergency unlocks each month in case something urgent comes up. They reset monthly from the day you signed up. Use them only when you really need to."
+                        question: "what are emergency overrides?",
+                        answer: "a safety net for when you truly need out. you start with 3 and can earn up to 5. use one and it ends your session immediately. earn them back by focusing 10+ minutes a day, 7 days in a row."
+                    )
+
+                    CTRLDivider()
+
+                    faqRow(
+                        id: "device",
+                        question: "how does the tag work?",
+                        answer: "your ctrl has a secure chip inside. when you tap it on your phone, the app verifies it's genuine and starts or ends your session. everything happens on-device. no internet needed."
+                    )
+
+                    CTRLDivider()
+
+                    faqRow(
+                        id: "offline",
+                        question: "does ctrl work offline?",
+                        answer: "yes. blocking and sessions work entirely on your device. your stats sync to the cloud when you're back online."
                     )
 
                     CTRLDivider()
 
                     faqRow(
                         id: "privacy",
-                        question: "Is my data private?",
-                        answer: "Which apps you choose to pause and how you use them stays only on your phone. We never see your app list, your browsing, or anything else."
+                        question: "is my data private?",
+                        answer: "your app selections never leave your phone. we encrypt them on-device before syncing anything. we never see which apps you block, your browsing, or anything personal."
+                    )
+
+                    CTRLDivider()
+
+                    faqRow(
+                        id: "lost",
+                        question: "what if I lose my tag?",
+                        answer: "order a new one from getctrl.in. there's no pairing — any genuine ctrl tag works instantly with your account."
+                    )
+
+                    CTRLDivider()
+
+                    faqRow(
+                        id: "share",
+                        question: "can I share my tag?",
+                        answer: "yes. any genuine ctrl works with any account. share it with friends or family — everyone's stats and modes stay separate since they sign in with their own email."
+                    )
+
+                    CTRLDivider()
+
+                    faqRow(
+                        id: "newphone",
+                        question: "how do I get my data on a new phone?",
+                        answer: "just sign in with the same email. your modes, stats, and settings sync automatically from the cloud."
                     )
                 }
             }
@@ -400,67 +524,6 @@ struct SettingsView: View {
                     .padding(.horizontal, CTRLSpacing.md)
                     .padding(.bottom, CTRLSpacing.md)
                     .transition(.opacity)
-            }
-        }
-    }
-
-    // MARK: - Cloud Sync Section
-
-    private var cloudSyncSection: some View {
-        VStack(alignment: .leading, spacing: CTRLSpacing.sm) {
-            CTRLSectionHeader(title: "Cloud Sync")
-
-            SurfaceCard(padding: 0, cornerRadius: CTRLSpacing.cardRadius) {
-                VStack(spacing: 0) {
-                    // What syncs
-                    VStack(alignment: .leading, spacing: CTRLSpacing.xs) {
-                        Text("synced across devices")
-                            .font(CTRLFonts.bodyFont)
-                            .foregroundColor(CTRLColors.textSecondary)
-
-                        Text("mode names, focus history, emergency overrides, app selections (encrypted)")
-                            .font(CTRLFonts.bodySmall)
-                            .foregroundColor(CTRLColors.textTertiary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(CTRLSpacing.md)
-
-                    CTRLDivider()
-
-                    // Encryption explanation
-                    VStack(alignment: .leading, spacing: CTRLSpacing.xs) {
-                        Text("end-to-end encrypted")
-                            .font(CTRLFonts.bodyFont)
-                            .foregroundColor(CTRLColors.textSecondary)
-
-                        Text("your app selections are encrypted on-device before syncing — we never see your app list")
-                            .font(CTRLFonts.bodySmall)
-                            .foregroundColor(CTRLColors.textTertiary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(CTRLSpacing.md)
-
-                    CTRLDivider()
-
-                    // Delete button
-                    Button(action: { activeAlert = .deleteData }) {
-                        HStack {
-                            Text("delete my email & data")
-                                .font(CTRLFonts.bodyFont)
-                                .foregroundColor(CTRLColors.destructive)
-
-                            Spacer()
-
-                            if isDeletingData {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: CTRLColors.destructive))
-                            }
-                        }
-                        .padding(CTRLSpacing.md)
-                    }
-                    .disabled(isDeletingData || blockingManager.isBlocking)
-                    .opacity(blockingManager.isBlocking ? 0.4 : 1.0)
-                }
             }
         }
     }
@@ -535,6 +598,27 @@ struct SettingsView: View {
 
     private var footerSection: some View {
         VStack(spacing: CTRLSpacing.sm) {
+            // Delete data
+            SurfaceCard(padding: 0, cornerRadius: CTRLSpacing.cardRadius) {
+                Button(action: { activeAlert = .deleteData }) {
+                    HStack {
+                        Text("delete my email & data")
+                            .font(CTRLFonts.bodyFont)
+                            .foregroundColor(CTRLColors.destructive)
+
+                        Spacer()
+
+                        if isDeletingData {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: CTRLColors.destructive))
+                        }
+                    }
+                    .padding(CTRLSpacing.md)
+                }
+                .disabled(isDeletingData || blockingManager.isBlocking)
+                .opacity(blockingManager.isBlocking ? 0.4 : 1.0)
+            }
+
             // Version
             HStack {
                 Text("version")
@@ -547,6 +631,18 @@ struct SettingsView: View {
                     .font(CTRLFonts.bodyFont)
                     .foregroundColor(CTRLColors.textTertiary)
             }
+            .padding(.top, CTRLSpacing.xs)
+
+            #if DEBUG
+            Button(action: {
+                appState.injectDemoData()
+            }) {
+                Text("inject demo data")
+                    .font(CTRLFonts.bodySmall)
+                    .foregroundColor(CTRLColors.accent)
+            }
+            .padding(.top, CTRLSpacing.xs)
+            #endif
 
             // Tagline
             Text("made with intent")
@@ -568,6 +664,11 @@ struct SettingsView: View {
             do {
                 try await SupabaseManager.shared.signOut()
                 await MainActor.run {
+                    // Deactivate blocking before wiping state to prevent brick scenario
+                    if appState.isInSession {
+                        appState.stopBlockingTimer()
+                    }
+                    blockingManager.deactivateBlocking()
                     appState.resetLocalData()
                 }
             } catch {
@@ -586,11 +687,17 @@ struct SettingsView: View {
                 try await SupabaseManager.shared.signOut()
                 await MainActor.run {
                     isDeletingData = false
+                    // Deactivate blocking before wiping state to prevent brick scenario
+                    if appState.isInSession {
+                        appState.stopBlockingTimer()
+                    }
+                    blockingManager.deactivateBlocking()
                     appState.resetLocalData()
                 }
             } catch {
                 await MainActor.run {
                     isDeletingData = false
+                    showDeleteError = true
                 }
                 #if DEBUG
                 print("[Settings] Delete data failed: \(error)")

@@ -10,6 +10,7 @@ struct ModeSelectionSheet: View {
     var lockedModeId: UUID? = nil
     var onEditMode: ((BlockingMode) -> Void)? = nil
     var onCreateMode: (() -> Void)? = nil
+    var onSetupMode: ((BlockingMode) -> Void)? = nil
 
     private var isInSession: Bool { lockedModeId != nil }
 
@@ -60,7 +61,7 @@ struct ModeSelectionSheet: View {
                     }
 
                     // Create mode row
-                    if appState.modes.count < AppState.maxModes {
+                    if appState.modes.count < AppConstants.maxModes {
                         Button(action: {
                             dismiss()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -99,10 +100,19 @@ struct ModeSelectionSheet: View {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
 
-        appState.setActiveMode(id: mode.id)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        if mode.appCount == 0, let onSetupMode = onSetupMode {
+            // Empty mode → open edit screen for setup
+            appState.setActiveMode(id: mode.id)
             dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                onSetupMode(mode)
+            }
+        } else {
+            // Normal mode selection
+            appState.setActiveMode(id: mode.id)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                dismiss()
+            }
         }
     }
 }
@@ -137,13 +147,20 @@ struct ModeCard: View {
                             .foregroundColor(.orange.opacity(0.8))
                     }
 
-                    // App count
-                    Text(mode.appSelection.displayCount)
-                        .font(CTRLFonts.captionFont)
-                        .tracking(1)
-                        .foregroundColor(CTRLColors.textTertiary)
+                    // App count or setup prompt
+                    if mode.appCount > 0 {
+                        Text(mode.appSelection.displayCount)
+                            .font(CTRLFonts.captionFont)
+                            .tracking(1)
+                            .foregroundColor(CTRLColors.textTertiary)
+                    } else {
+                        Text("tap to set up")
+                            .font(.system(size: 12))
+                            .foregroundColor(CTRLColors.accent.opacity(0.5))
+                    }
                 }
                 .padding(.leading, CTRLSpacing.md)
+                .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
             .disabled(selectionDisabled)

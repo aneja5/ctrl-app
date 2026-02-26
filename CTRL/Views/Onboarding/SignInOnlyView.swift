@@ -59,7 +59,7 @@ struct SignInOnlyView: View {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: CTRLColors.base))
                         }
-                        Text(isLoading ? (step == .email ? "Sending..." : "Verifying...") : "Continue")
+                        Text(isLoading ? (step == .email ? "sending..." : "verifying...") : "continue")
                     }
                 }
                 .font(.system(size: 16, weight: .medium))

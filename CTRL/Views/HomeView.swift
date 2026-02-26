@@ -8,6 +8,7 @@ struct HomeView: View {
     @EnvironmentObject var scheduleManager: ScheduleManager
 
     @State private var showInvalidTagAlert = false
+    @State private var showNFCUnavailableAlert = false
     @State private var currentTime = Date()
     @State private var showModeSheet = false
     @State private var ritualGlowPulse: CGFloat = 0
@@ -20,6 +21,8 @@ struct HomeView: View {
     @State private var isLongPressing = false
     @State private var showManualStartAlert = false
     @State private var showCountdownUnlock = false
+    @State private var breakPillExpanded = false
+    @State private var showOverrideEarnedToast = false
     @Environment(\.scenePhase) private var scenePhase
 
     // Sheet item — unique ID forces fresh EditModeView each time
@@ -31,7 +34,7 @@ struct HomeView: View {
     }
 
     private var isInSession: Bool {
-        if FeatureFlags.schedulesEnabled {
+        if featureEnabled(.schedules) {
             return blockingManager.isBlocking || scheduleManager.activeScheduleId != nil
         }
         return blockingManager.isBlocking
@@ -39,7 +42,7 @@ struct HomeView: View {
 
     /// True when the session is from a schedule (not a manual NFC lock-in)
     private var isScheduledSession: Bool {
-        guard FeatureFlags.schedulesEnabled else { return false }
+        guard featureEnabled(.schedules) else { return false }
         return scheduleManager.activeScheduleId != nil && !blockingManager.isBlocking
     }
 
@@ -105,12 +108,13 @@ struct HomeView: View {
                 // ── CONTENT CLUSTER (fixed internal layout) ──
 
                 // Status text — fixed position, property-driven (no if/else swap)
-                Text(isInSession ? "in session" : "unlocked")
+                Text(appState.isOnBreak ? "on break" : (isInSession ? "in session" : "unlocked"))
                     .font(CTRLFonts.display)
                     .tracking(2)
-                    .foregroundColor(isInSession ? CTRLColors.accent : CTRLColors.textPrimary)
+                    .foregroundColor(appState.isOnBreak ? CTRLColors.textSecondary : (isInSession ? CTRLColors.accent : CTRLColors.textPrimary))
                     .contentTransition(.interpolate)
                     .animation(.easeInOut(duration: 0.35), value: isInSession)
+                    .animation(.easeInOut(duration: 0.35), value: appState.isOnBreak)
 
                 // Mode selector — same position in both states
                 modeSelector
@@ -126,31 +130,44 @@ struct HomeView: View {
                 .frame(height: 80)
                 .padding(.top, CTRLSpacing.xs)
 
+                // Break pill — only during sessions
+                ZStack {
+                    if featureEnabled(.breaks) && isInSession {
+                        BreakPillView(
+                            isExpanded: $breakPillExpanded,
+                            onStartBreak: { breakOption in startBreak(breakOption) },
+                            onEndBreak: { endBreak() }
+                        )
+                        .environmentObject(appState)
+                    }
+                }
+                .frame(minHeight: 44)
+                .padding(.top, CTRLSpacing.xs)
+                .animation(.easeInOut(duration: 0.25), value: appState.earnedBreaks.count)
+                .animation(.easeInOut(duration: 0.25), value: appState.isOnBreak)
+
                 // ── END CONTENT CLUSTER ──
 
                 // Bottom spacer — less than top (pushes cluster above center)
                 Spacer()
                     .frame(minHeight: 40)
 
-                // Primary action — single button, property-driven
+                // Primary action — single button, property-driven (hidden during break)
                 primaryAction
                     .padding(.horizontal, CTRLSpacing.screenPadding + 20)
                     .padding(.bottom, CTRLSpacing.md)
+                    .opacity(appState.isOnBreak ? 0 : 1)
+                    .allowsHitTesting(!appState.isOnBreak)
+                    .animation(.easeInOut(duration: 0.25), value: appState.isOnBreak)
 
-                // Breathing dot — always in layout, opacity-driven
-                BreathingDot()
-                    .opacity(isInSession ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.3), value: isInSession)
-                    .frame(height: 20)
-
-                // Manual end session text — always in layout, opacity-driven
+                // Manual end session text — always in layout, opacity-driven (hidden during break)
                 Button(action: { showCountdownUnlock = true }) {
                     Text("end session")
                         .font(.caption)
                         .foregroundColor(Color.white.opacity(0.35))
                 }
-                .opacity(isInSession && appState.sessionStartMethod == .manual ? 1 : 0)
-                .allowsHitTesting(isInSession && appState.sessionStartMethod == .manual)
+                .opacity(isInSession && appState.sessionStartMethod == .manual && !appState.isOnBreak ? 1 : 0)
+                .allowsHitTesting(isInSession && appState.sessionStartMethod == .manual && !appState.isOnBreak)
                 .frame(height: 20)
                 .padding(.top, CTRLSpacing.xs)
 
@@ -158,6 +175,24 @@ struct HomeView: View {
                 Spacer()
                     .frame(height: 100)
             }
+
+            // Override earned toast
+            VStack {
+                if showOverrideEarnedToast {
+                    Text("override earned \u{2014} 7 days of focus")
+                        .font(CTRLFonts.bodySmall)
+                        .foregroundColor(CTRLColors.accent)
+                        .padding(.horizontal, CTRLSpacing.md)
+                        .padding(.vertical, CTRLSpacing.sm)
+                        .background(Capsule().fill(CTRLColors.surface1))
+                        .overlay(Capsule().stroke(CTRLColors.accent.opacity(0.3), lineWidth: 1))
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .padding(.top, CTRLSpacing.xl + 30)
+                }
+                Spacer()
+            }
+            .allowsHitTesting(false)
+            .animation(.easeInOut(duration: 0.4), value: showOverrideEarnedToast)
 
         }
         .alert("not a genuine ctrl", isPresented: $showInvalidTagAlert) {
@@ -169,6 +204,11 @@ struct HomeView: View {
             }
         } message: {
             Text("only official ctrl devices can start your focus sessions. get yours at getctrl.in")
+        }
+        .alert("nfc not available", isPresented: $showNFCUnavailableAlert) {
+            Button("ok", role: .cancel) { }
+        } message: {
+            Text("nfc isn't available on this device. ctrl requires nfc to work with your tag.")
         }
         .alert("screen time required", isPresented: $showPermissionAlert) {
             Button("open settings") {
@@ -198,6 +238,7 @@ struct HomeView: View {
                 appState.stopBlockingTimer()
                 blockingManager.deactivateBlocking()
                 appState.isBlocking = blockingManager.isBlocking
+                checkOverrideEarnedNotification()
             })
         }
         .alert("app blocking improved", isPresented: $appState.showReselectionAlert) {
@@ -215,7 +256,7 @@ struct HomeView: View {
         }
         // Periodic schedule re-check: catches windows that start/end while app is in foreground
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
-            if FeatureFlags.schedulesEnabled {
+            if featureEnabled(.schedules) {
                 scheduleManager.syncScheduleShields()
                 // Schedule just activated — start the timer
                 if scheduleManager.activeScheduleId != nil && !appState.isInSession {
@@ -224,6 +265,7 @@ struct HomeView: View {
                 // Schedule just ended naturally — stop the timer
                 if scheduleManager.activeScheduleId == nil && !blockingManager.isBlocking && appState.isInSession {
                     appState.stopBlockingTimer()
+                    checkOverrideEarnedNotification()
                 }
             }
         }
@@ -231,7 +273,7 @@ struct HomeView: View {
             let authorized = await blockingManager.requestAuthorization()
             appState.isAuthorized = authorized
 
-            if FeatureFlags.schedulesEnabled {
+            if featureEnabled(.schedules) {
                 // Primary activation: sync schedule shields on launch
                 scheduleManager.syncScheduleShields()
                 scheduleManager.scheduleImminentSync(for: appState.schedules)
@@ -248,7 +290,18 @@ struct HomeView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                if FeatureFlags.schedulesEnabled {
+                // Catch up break countdown after backgrounding (timer may have missed ticks)
+                if appState.isOnBreak, let breakStart = appState.breakStartDate {
+                    let elapsed = Int(Date().timeIntervalSince(breakStart))
+                    let remaining = appState.breakTotalDuration - elapsed
+                    if remaining <= 0 {
+                        endBreak()
+                    } else {
+                        appState.breakSecondsRemaining = remaining
+                    }
+                }
+
+                if featureEnabled(.schedules) {
                     // Primary activation: sync schedule shields on every foreground
                     scheduleManager.syncScheduleShields()
                     scheduleManager.scheduleImminentSync(for: appState.schedules)
@@ -267,9 +320,12 @@ struct HomeView: View {
                         appState.stopBlockingTimer()
                     }
                 }
+
+                // Check for override earned notification (may have been set while backgrounded)
+                checkOverrideEarnedNotification()
             }
             if newPhase == .background {
-                if FeatureFlags.schedulesEnabled {
+                if featureEnabled(.schedules) {
                     // Sync shields before backgrounding (catches schedule windows that started while app was open)
                     scheduleManager.syncScheduleShields()
                     // Sync timer if schedule just activated
@@ -281,6 +337,13 @@ struct HomeView: View {
                 }
             }
         }
+        .onChange(of: appState.breakSecondsRemaining) { oldValue, newValue in
+            if oldValue > 0 && newValue <= 0 && appState.isOnBreak {
+                // Break expired — auto-resume blocking
+                endBreak()
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            }
+        }
         .sheet(isPresented: $showModeSheet) {
             ModeSelectionSheet(
                 lockedModeId: activeSessionModeId,
@@ -290,6 +353,9 @@ struct HomeView: View {
                 },
                 onCreateMode: {
                     editingModeFromSheet = EditModeItem(mode: nil, isNew: true, viewOnly: false)
+                },
+                onSetupMode: { mode in
+                    editingModeFromSheet = EditModeItem(mode: mode, isNew: false, viewOnly: false)
                 }
             )
                 .environmentObject(appState)
@@ -313,7 +379,7 @@ struct HomeView: View {
                 },
                 onDelete: { modeToDelete in
                     let affected = appState.deleteMode(modeToDelete)
-                    if FeatureFlags.schedulesEnabled {
+                    if featureEnabled(.schedules) {
                         for schedule in affected {
                             scheduleManager.unregisterSchedule(schedule)
                         }
@@ -354,7 +420,7 @@ struct HomeView: View {
                 .foregroundColor(CTRLColors.textPrimary)
                 .monospacedDigit()
                 .scaleEffect(timerScale)
-                .opacity(timerOpacity)
+                .opacity(appState.isOnBreak ? 0.4 : timerOpacity)
 
             // Session type badges
             HStack(spacing: CTRLSpacing.xs) {
@@ -376,7 +442,7 @@ struct HomeView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
 
-                if FeatureFlags.schedulesEnabled && scheduleManager.activeScheduleId != nil {
+                if featureEnabled(.schedules) && scheduleManager.activeScheduleId != nil {
                     Text("scheduled")
                         .font(CTRLFonts.micro)
                         .tracking(1.5)
@@ -452,6 +518,8 @@ struct HomeView: View {
                 Text(isInSession ? sessionModeName : (appState.activeMode?.name.lowercased() ?? "select mode"))
                     .font(CTRLFonts.bodySmall)
                     .foregroundColor(CTRLColors.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                 Image(systemName: "chevron.down")
                     .font(.system(size: 11, weight: .semibold))
@@ -509,8 +577,11 @@ struct HomeView: View {
             }
         }
 
-        // Default: elapsed time (NFC sessions, manual sessions)
-        let seconds = Int(appState.currentSessionSeconds)
+        // Default: elapsed focus time (NFC sessions, manual sessions)
+        // During a break, show paused focus time; otherwise show focus time excluding breaks
+        let seconds = appState.isOnBreak
+            ? appState.focusSecondsExcludingBreaks
+            : max(0, Int(appState.currentSessionSeconds) - appState.totalBreakSecondsTaken)
         let hours = seconds / 3600
         let minutes = (seconds % 3600) / 60
         let secs = seconds % 60
@@ -522,10 +593,44 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Break Management
+
+    private func startBreak(_ breakOption: BreakOption) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        appState.startBreak(breakOption)
+        // Unblock apps during break
+        blockingManager.deactivateBlocking()
+        appState.isBlocking = blockingManager.isBlocking
+        breakPillExpanded = false
+    }
+
+    private func endBreak() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        appState.endBreak()
+        // Re-block apps after break
+        if let mode = appState.activeMode {
+            blockingManager.activateBlocking(for: mode.appSelection, strictMode: appState.strictModeEnabled)
+        }
+        appState.isBlocking = blockingManager.isBlocking
+    }
+
+    // MARK: - Override Earned Toast
+
+    private func checkOverrideEarnedNotification() {
+        if appState.pendingOverrideEarnedNotification {
+            appState.pendingOverrideEarnedNotification = false
+            withAnimation { showOverrideEarnedToast = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                withAnimation { showOverrideEarnedToast = false }
+            }
+        }
+    }
+
     // MARK: - Long Press
 
     private func completeLongPress() {
         isLongPressing = false
+        guard featureEnabled(.manualSessions) else { return }
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
         showManualStartAlert = true
     }
@@ -560,7 +665,7 @@ struct HomeView: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         // Block manual lock-in during a scheduled session
-        if FeatureFlags.schedulesEnabled && scheduleManager.activeScheduleId != nil && !blockingManager.isBlocking {
+        if featureEnabled(.schedules) && scheduleManager.activeScheduleId != nil && !blockingManager.isBlocking {
             showScheduledSessionAlert = true
             return
         }
@@ -590,12 +695,16 @@ struct HomeView: View {
                 generator.impactOccurred()
 
                 if isInSession {
+                    // End any active break first
+                    if appState.isOnBreak {
+                        appState.endBreak()
+                    }
                     // End session (manual or scheduled)
                     appState.stopBlockingTimer()
                     if blockingManager.isBlocking {
                         blockingManager.deactivateBlocking()
                     }
-                    if FeatureFlags.schedulesEnabled {
+                    if featureEnabled(.schedules) {
                         if scheduleManager.activeScheduleId != nil {
                             // endActiveSession marks as skipped + calls syncScheduleShields for handoff
                             scheduleManager.endActiveSession()
@@ -608,6 +717,7 @@ struct HomeView: View {
                             appState.startBlockingTimer()
                         }
                     }
+                    checkOverrideEarnedNotification()
                 } else {
                     // Start session — apps already verified by handleLockIn()
                     if let mode = appState.activeMode {
@@ -621,6 +731,10 @@ struct HomeView: View {
 
             case .failure(let error):
                 if case NFCError.userCancelled = error {
+                    return
+                }
+                if case NFCError.notAvailable = error {
+                    showNFCUnavailableAlert = true
                     return
                 }
                 if case NFCError.invalidTag = error {

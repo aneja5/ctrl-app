@@ -71,8 +71,11 @@ class BlockingManager: ObservableObject {
         store.shield.applications = selection.applicationTokens.isEmpty
             ? nil : selection.applicationTokens
 
-        // Block categories (e.g., "Social" blocks all apps in that category)
-        if !selection.categoryTokens.isEmpty {
+        // Category-level blocking: only as fallback for pre-migration modes
+        // that have categories but no expanded applicationTokens yet.
+        // When includeEntireCategory is true, categories expand into applicationTokens,
+        // so applying categoryTokens separately would over-block the entire category.
+        if selection.applicationTokens.isEmpty && !selection.categoryTokens.isEmpty {
             store.shield.applicationCategories = .specific(selection.categoryTokens)
         } else {
             store.shield.applicationCategories = nil

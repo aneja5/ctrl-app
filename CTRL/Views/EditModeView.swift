@@ -119,7 +119,7 @@ struct EditModeView: View {
         .alert("duplicate name", isPresented: $showDuplicateNameAlert) {
             Button("ok", role: .cancel) {}
         } message: {
-            Text("a mode with this name already exists. please choose a different name.")
+            Text("a mode with this name already exists. try a different name.")
         }
         .alert("delete mode?", isPresented: $showDeleteConfirm) {
             Button("cancel", role: .cancel) {}
@@ -276,47 +276,7 @@ struct EditModeView: View {
                     .padding(.horizontal, CTRLSpacing.md)
                     .padding(.vertical, CTRLSpacing.sm)
 
-                    if index < apps.count - 1 || !appSelection.categoryTokens.isEmpty {
-                        CTRLDivider()
-                            .padding(.leading, CTRLSpacing.md + 32 + CTRLSpacing.md)
-                    }
-                }
-
-                // Categories
-                let categories = Array(appSelection.categoryTokens)
-                ForEach(Array(categories.enumerated()), id: \.offset) { index, token in
-                    HStack(spacing: CTRLSpacing.md) {
-                        Label(token)
-                            .labelStyle(.iconOnly)
-                            .saturation(0.25)
-                            .brightness(-0.1)
-                            .scaleEffect(1.5)
-                            .frame(width: 32, height: 32)
-
-                        Label(token)
-                            .labelStyle(.titleOnly)
-                            .font(CTRLFonts.bodyFont)
-                            .foregroundColor(CTRLColors.textPrimary)
-                            .lineLimit(1)
-
-                        Spacer()
-
-                        if !viewOnly {
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    _ = appSelection.categoryTokens.remove(token)
-                                }
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(CTRLColors.textTertiary)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, CTRLSpacing.md)
-                    .padding(.vertical, CTRLSpacing.sm)
-
-                    if index < categories.count - 1 {
+                    if index < apps.count - 1 {
                         CTRLDivider()
                             .padding(.leading, CTRLSpacing.md + 32 + CTRLSpacing.md)
                     }

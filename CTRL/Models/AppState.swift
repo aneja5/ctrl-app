@@ -7,6 +7,17 @@ enum SessionStartMethod: String, Codable {
     case manual
 }
 
+struct BreakOption: Identifiable {
+    let id = UUID()
+    let durationMinutes: Int     // 5 or 10
+    var durationSeconds: Int { durationMinutes * 60 }
+}
+
+struct BreakMilestone {
+    let focusMinutesRequired: Int   // 25, 45, 90
+    let breakMinutes: Int           // 5, 5, 10
+}
+
 class AppState: ObservableObject {
 
     // MARK: - Singleton
@@ -43,6 +54,12 @@ class AppState: ObservableObject {
         static let bestDayDate = "ctrl_best_day_date"
         static let bestWeekSeconds = "ctrl_best_week_seconds"
         static let bestWeekStart = "ctrl_best_week_start"
+        static let cumulativeLifetimeSeconds = "ctrl_cumulative_lifetime_seconds"
+        static let cumulativeLifetimeSessions = "ctrl_cumulative_lifetime_sessions"
+        static let cumulativeLifetimeDays = "ctrl_cumulative_lifetime_days"
+        static let lastOverrideUsedDate = "ctrl_last_override_used_date"
+        static let overrideEarnBackDays = "ctrl_override_earn_back_days"
+        static let overrideV2Migrated = "ctrl_override_v2_migrated"
     }
 
     // MARK: - Persistence
@@ -69,7 +86,7 @@ class AppState: ObservableObject {
         }
     }
     @Published var activeModeId: UUID? = nil
-    @Published var emergencyUnlocksRemaining: Int = 5
+    @Published var emergencyUnlocksRemaining: Int = AppConstants.startingOverrides
     @Published var totalBlockedSeconds: TimeInterval = 0
     @Published var focusHistory: [DailyFocusEntry] = []
     @Published var strictModeEnabled: Bool = false
@@ -93,6 +110,48 @@ class AppState: ObservableObject {
     var bestWeekSeconds: Int = 0
     var bestWeekStart: Date? = nil
 
+    // Cumulative lifetime counters (survive 90-day history trim)
+    var cumulativeLifetimeSeconds: TimeInterval = 0
+    var cumulativeLifetimeSessions: Int = 0
+    var cumulativeLifetimeDays: Int = 0
+
+    // MARK: - Break State (in-memory only, not persisted)
+
+    static let breakMilestones: [BreakMilestone] = [
+        BreakMilestone(focusMinutesRequired: 25, breakMinutes: 5),
+        BreakMilestone(focusMinutesRequired: 45, breakMinutes: 5),
+        BreakMilestone(focusMinutesRequired: 90, breakMinutes: 10),
+    ]
+
+    /// Breaks the user has earned but not yet taken
+    @Published var earnedBreaks: [BreakOption] = []
+
+    /// Whether the user is currently on a break
+    @Published var isOnBreak: Bool = false
+
+    /// Seconds remaining in the current break (counts down)
+    @Published var breakSecondsRemaining: Int = 0
+
+    /// Total break seconds consumed so far this session (for stats)
+    var totalBreakSecondsTaken: Int = 0
+
+    /// When the current break started
+    var breakStartDate: Date? = nil
+
+    /// Total duration of the current break in seconds (for foreground catch-up)
+    var breakTotalDuration: Int = 0
+
+    /// Which milestone indices have been reached this session (to avoid re-earning)
+    private var earnedMilestoneIndices: Set<Int> = []
+
+    /// Focus-only elapsed seconds (total elapsed minus break time)
+    var focusSecondsExcludingBreaks: Int {
+        let breakSecondsInProgress = isOnBreak
+            ? Int(Date().timeIntervalSince(breakStartDate ?? Date()))
+            : 0
+        return max(0, elapsedSeconds - totalBreakSecondsTaken - breakSecondsInProgress)
+    }
+
     @Published var sessionStartTime: Date? {
         didSet {
             if !isLoadingState {
@@ -100,7 +159,9 @@ class AppState: ObservableObject {
             }
         }
     }
-    var lastEmergencyResetDate: Date?
+    var lastOverrideUsedDate: String? = nil   // "yyyy-MM-dd" format
+    var overrideEarnBackDays: Int = 0
+    @Published var pendingOverrideEarnedNotification: Bool = false
     var registrationDate: Date?
     var blockingStartDate: Date? = nil
     var focusDate: Date? = nil
@@ -110,8 +171,6 @@ class AppState: ObservableObject {
     var modesNeedingReselection: [BlockingMode] {
         modes.filter { $0.needsReselection }
     }
-
-    static let maxModes = 6
 
     // MARK: - Computed Properties
 
@@ -235,12 +294,17 @@ class AppState: ObservableObject {
             }
 
             // Migration: detect modes saved before includeEntireCategory fix
-            if uniqueModes.contains(where: { $0.needsReselection }) {
-                showReselectionAlert = true
-                #if DEBUG
-                let staleNames = uniqueModes.filter { $0.needsReselection }.map { $0.name }
-                print("[AppState] Migration: modes need re-selection: \(staleNames)")
-                #endif
+            // Only applies to pre-v1.0 TestFlight users — fresh installs are unaffected
+            if !defaults.bool(forKey: "didRunCategoryMigration") {
+                if uniqueModes.contains(where: { $0.needsReselection }) {
+                    showReselectionAlert = true
+                    #if DEBUG
+                    let staleNames = uniqueModes.filter { $0.needsReselection }.map { $0.name }
+                    print("[AppState] Migration: modes need re-selection: \(staleNames)")
+                    #endif
+                } else {
+                    defaults.set(true, forKey: "didRunCategoryMigration")
+                }
             }
         }
 
@@ -255,13 +319,14 @@ class AppState: ObservableObject {
             activeModeId = modes.first?.id
         }
 
-        // Load emergency unlock data
+        // Load override data (v2 earn-back system)
         if defaults.object(forKey: Keys.emergencyUnlocks) != nil {
             emergencyUnlocksRemaining = defaults.integer(forKey: Keys.emergencyUnlocks)
         } else {
-            emergencyUnlocksRemaining = 5
+            emergencyUnlocksRemaining = AppConstants.startingOverrides
         }
-        lastEmergencyResetDate = defaults.object(forKey: Keys.emergencyResetDate) as? Date
+        lastOverrideUsedDate = defaults.string(forKey: Keys.lastOverrideUsedDate)
+        overrideEarnBackDays = defaults.integer(forKey: Keys.overrideEarnBackDays)
         registrationDate = defaults.object(forKey: Keys.registrationDate) as? Date
         // Backfill for existing users who onboarded before registrationDate was tracked
         if registrationDate == nil && hasCompletedOnboarding {
@@ -320,11 +385,34 @@ class AppState: ObservableObject {
         bestWeekSeconds = defaults.integer(forKey: Keys.bestWeekSeconds)
         bestWeekStart = defaults.object(forKey: Keys.bestWeekStart) as? Date
 
+        // Load cumulative lifetime counters
+        cumulativeLifetimeSeconds = defaults.double(forKey: Keys.cumulativeLifetimeSeconds)
+        cumulativeLifetimeSessions = defaults.integer(forKey: Keys.cumulativeLifetimeSessions)
+        cumulativeLifetimeDays = defaults.integer(forKey: Keys.cumulativeLifetimeDays)
+
+        // Backfill cumulative counters from existing focusHistory (one-time migration)
+        if cumulativeLifetimeSeconds == 0 && cumulativeLifetimeSessions == 0 && !focusHistory.isEmpty {
+            let historySeconds = focusHistory.reduce(0.0) { $0 + $1.totalSeconds }
+            let historySessions = focusHistory.reduce(0) { $0 + $1.sessionCount }
+            let historyDays = focusHistory.filter { $0.totalSeconds > 0 }.count
+            if historySeconds > 0 {
+                cumulativeLifetimeSeconds = historySeconds
+                cumulativeLifetimeSessions = historySessions
+                cumulativeLifetimeDays = historyDays
+                defaults.set(cumulativeLifetimeSeconds, forKey: Keys.cumulativeLifetimeSeconds)
+                defaults.set(cumulativeLifetimeSessions, forKey: Keys.cumulativeLifetimeSessions)
+                defaults.set(cumulativeLifetimeDays, forKey: Keys.cumulativeLifetimeDays)
+                #if DEBUG
+                print("[AppState] Backfilled cumulative counters: \(Int(cumulativeLifetimeSeconds))s, \(cumulativeLifetimeSessions) sessions, \(cumulativeLifetimeDays) days")
+                #endif
+            }
+        }
+
         // Recalculate streak from history (handles app not opened for days)
         recalculateStreakFromHistory()
 
         checkAndResetDailyFocusTime()
-        checkAndResetMonthlyAllowance()
+        migrateToOverrideV2IfNeeded()
 
         #if DEBUG
         print("[AppState] loadState — email: \(userEmail ?? "nil"), onboarded: \(hasCompletedOnboarding), modes: \(modes.count)")
@@ -370,9 +458,8 @@ class AppState: ObservableObject {
         defaults.set(activeModeId?.uuidString, forKey: Keys.activeModeId)
 
         defaults.set(emergencyUnlocksRemaining, forKey: Keys.emergencyUnlocks)
-        if let resetDate = lastEmergencyResetDate {
-            defaults.set(resetDate, forKey: Keys.emergencyResetDate)
-        }
+        defaults.set(lastOverrideUsedDate, forKey: Keys.lastOverrideUsedDate)
+        defaults.set(overrideEarnBackDays, forKey: Keys.overrideEarnBackDays)
         if let regDate = registrationDate {
             defaults.set(regDate, forKey: Keys.registrationDate)
         }
@@ -420,6 +507,11 @@ class AppState: ObservableObject {
         defaults.set(bestWeekSeconds, forKey: Keys.bestWeekSeconds)
         if let d = bestWeekStart { defaults.set(d, forKey: Keys.bestWeekStart) }
 
+        // Save cumulative lifetime counters
+        defaults.set(cumulativeLifetimeSeconds, forKey: Keys.cumulativeLifetimeSeconds)
+        defaults.set(cumulativeLifetimeSessions, forKey: Keys.cumulativeLifetimeSessions)
+        defaults.set(cumulativeLifetimeDays, forKey: Keys.cumulativeLifetimeDays)
+
         defaults.synchronize()
 
         #if DEBUG
@@ -454,67 +546,96 @@ class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Emergency Unlock
-
-    /// Returns the next reset date based on the user's registration day-of-month.
-    /// For example, if the user registered on the 15th, overrides reset on the 15th of each month.
-    func nextOverrideResetDate() -> Date? {
-        let calendar = Calendar.current
-        let now = Date()
-        let regDay = registrationDate.map { calendar.component(.day, from: $0) } ?? 1
-
-        // Try the registration day in the current month
-        var components = calendar.dateComponents([.year, .month], from: now)
-        components.day = min(regDay, calendar.range(of: .day, in: .month, for: now)?.count ?? 28)
-
-        if let candidate = calendar.date(from: components), candidate > now {
-            return candidate
-        }
-
-        // Already passed this month — use next month
-        guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: now) else { return nil }
-        components = calendar.dateComponents([.year, .month], from: nextMonth)
-        components.day = min(regDay, calendar.range(of: .day, in: .month, for: nextMonth)?.count ?? 28)
-        return calendar.date(from: components)
-    }
-
-    func checkAndResetMonthlyAllowance() {
-        let calendar = Calendar.current
-        let now = Date()
-
-        if let lastReset = lastEmergencyResetDate {
-            let regDay = registrationDate.map { calendar.component(.day, from: $0) } ?? 1
-
-            // Build the reset date for the current month
-            var components = calendar.dateComponents([.year, .month], from: now)
-            components.day = min(regDay, calendar.range(of: .day, in: .month, for: now)?.count ?? 28)
-
-            if let resetThisMonth = calendar.date(from: components),
-               now >= resetThisMonth && lastReset < resetThisMonth {
-                emergencyUnlocksRemaining = 5
-                lastEmergencyResetDate = now
-                saveState()
-                #if DEBUG
-                print("[AppState] Monthly emergency unlocks reset to 5 (registration-based)")
-                #endif
-            }
-        } else {
-            lastEmergencyResetDate = now
-            saveState()
-        }
-    }
+    // MARK: - Emergency Unlock (Earn-Back System)
 
     func useEmergencyUnlock() -> Bool {
         if emergencyUnlocksRemaining > 0 {
             emergencyUnlocksRemaining -= 1
+            lastOverrideUsedDate = DailyFocusEntry.todayKey()
+            overrideEarnBackDays = 0
             saveState()
-            Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+            if featureEnabled(.cloudSync) {
+                Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+            }
             #if DEBUG
-            print("[AppState] Emergency unlock used, remaining: \(emergencyUnlocksRemaining)")
+            print("[AppState] Emergency unlock used, remaining: \(emergencyUnlocksRemaining), earn-back reset")
             #endif
             return true
         }
         return false
+    }
+
+    /// Recalculates earn-back progress after a session ends.
+    /// Walks focusHistory from the day after lastOverrideUsedDate,
+    /// counting consecutive days with 10+ minutes of focus.
+    /// Awards +1 override when 7 consecutive qualifying days are reached.
+    func updateOverrideEarnBack() {
+        guard featureEnabled(.overrideEarnBack) else { return }
+        guard emergencyUnlocksRemaining < AppConstants.maxOverrides else {
+            overrideEarnBackDays = 0
+            return
+        }
+
+        guard let lastUsedString = lastOverrideUsedDate,
+              let lastUsedDate = DailyFocusEntry.dateFormatter.date(from: lastUsedString) else {
+            return
+        }
+
+        let calendar = Calendar.current
+        let formatter = DailyFocusEntry.dateFormatter
+        let today = calendar.startOfDay(for: Date())
+
+        guard let startDate = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: lastUsedDate)) else { return }
+
+        let qualifyingDates: Set<String> = Set(
+            focusHistory
+                .filter { $0.totalSeconds >= AppConstants.minimumSessionForEarnBack }
+                .map { $0.date }
+        )
+
+        var consecutiveDays = 0
+        var checkDate = startDate
+
+        while checkDate <= today {
+            let key = formatter.string(from: checkDate)
+            if qualifyingDates.contains(key) {
+                consecutiveDays += 1
+            } else if checkDate < today {
+                // Past day with no qualifying session — streak broken
+                consecutiveDays = 0
+            } else {
+                break  // Today not over yet
+            }
+            guard let next = calendar.date(byAdding: .day, value: 1, to: checkDate) else { break }
+            checkDate = next
+        }
+
+        overrideEarnBackDays = consecutiveDays
+
+        if consecutiveDays >= AppConstants.earnBackStreakDays {
+            emergencyUnlocksRemaining = min(emergencyUnlocksRemaining + 1, AppConstants.maxOverrides)
+            overrideEarnBackDays = 0
+            // Move anchor forward so next earn-back starts fresh
+            lastOverrideUsedDate = formatter.string(from: Date())
+            pendingOverrideEarnedNotification = true
+            #if DEBUG
+            print("[AppState] Override earned! Now at \(emergencyUnlocksRemaining)/\(AppConstants.maxOverrides)")
+            #endif
+        }
+
+        saveState()
+    }
+
+    /// One-time migration from monthly-reset overrides to earn-back system.
+    private func migrateToOverrideV2IfNeeded() {
+        guard !defaults.bool(forKey: Keys.overrideV2Migrated) else { return }
+        emergencyUnlocksRemaining = min(emergencyUnlocksRemaining, AppConstants.maxOverrides)
+        defaults.removeObject(forKey: Keys.emergencyResetDate)
+        defaults.set(true, forKey: Keys.overrideV2Migrated)
+        saveState()
+        #if DEBUG
+        print("[AppState] Migrated to override v2: \(emergencyUnlocksRemaining) overrides")
+        #endif
     }
 
     // MARK: - Focus Time Tracking
@@ -546,6 +667,7 @@ class AppState: ObservableObject {
     }
 
     func startBlockingTimer(method: SessionStartMethod = .nfc) {
+        guard !isInSession else { return }
         checkAndResetDailyFocusTime()
         isInSession = true
         sessionStartMethod = method
@@ -558,6 +680,12 @@ class AppState: ObservableObject {
     }
 
     func stopBlockingTimer() {
+        guard isInSession else { return }
+        // If on break, finalize break time first
+        if featureEnabled(.breaks) && isOnBreak {
+            endBreak()
+        }
+
         isInSession = false
         sessionStartMethod = .nfc
         sessionStartTime = nil
@@ -565,23 +693,48 @@ class AppState: ObservableObject {
         timer = nil
 
         // Log focus time — split across calendar days if session crosses midnight
+        // Uses focus-only time (excludes break duration) for all stats
         if let startDate = blockingStartDate {
             let now = Date()
-            let elapsed = Int(now.timeIntervalSince(startDate))
-            if elapsed > 0 {
-                totalBlockedSeconds += TimeInterval(elapsed)
-                logSessionAcrossDays(start: startDate, end: now)
-                updateStreakAndRecords(sessionSeconds: elapsed)
+            let totalElapsed = Int(now.timeIntervalSince(startDate))
+            let focusElapsed = max(0, totalElapsed - totalBreakSecondsTaken)
+
+            if focusElapsed >= AppConstants.minimumSessionToLog {
+                totalBlockedSeconds += TimeInterval(focusElapsed)
+
+                // Count new days BEFORE logging (days that had no prior data)
+                let newDays = countNewDaysInSession(start: startDate, end: now)
+
+                // Sessions under threshold log time but don't count toward session count
+                let countsAsSession = focusElapsed >= AppConstants.minimumSessionForHistory
+                logSessionAcrossDays(start: startDate, end: now, totalFocusSeconds: focusElapsed, countSession: countsAsSession)
+                updateStreakAndRecords(sessionSeconds: focusElapsed)
+
+                // Increment cumulative lifetime counters
+                cumulativeLifetimeSeconds += TimeInterval(focusElapsed)
+                if countsAsSession {
+                    cumulativeLifetimeSessions += 1
+                }
+                cumulativeLifetimeDays += newDays
+
+                // Update override earn-back progress
+                updateOverrideEarnBack()
+
                 #if DEBUG
-                print("[AppState] Session ended — \(elapsed)s logged (split across days if needed)")
+                print("[AppState] Session ended — \(focusElapsed)s focus (of \(totalElapsed)s total, \(totalBreakSecondsTaken)s break)")
                 #endif
             }
         }
 
         blockingStartDate = nil
         elapsedSeconds = 0
+        if featureEnabled(.breaks) {
+            resetBreakState()
+        }
         saveState()
-        Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+        if featureEnabled(.cloudSync) {
+            Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+        }
     }
 
     var currentSessionSeconds: TimeInterval {
@@ -610,11 +763,17 @@ class AppState: ObservableObject {
         let elapsed = Int(Date().timeIntervalSince(startTime))
         elapsedSeconds = max(0, elapsed)
 
+        // Re-earn any breaks for this session duration
+        // (break state is in-memory only, so it's lost on app kill)
+        if featureEnabled(.breaks) {
+            checkBreakEarning()
+        }
+
         // Restart the timer
         startTimer()
 
         #if DEBUG
-        print("[AppState] Restored session — elapsed: \(elapsedSeconds)s")
+        print("[AppState] Restored session — elapsed: \(elapsedSeconds)s, earned breaks: \(earnedBreaks.count)")
         #endif
     }
 
@@ -622,9 +781,78 @@ class AppState: ObservableObject {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
-                self?.elapsedSeconds += 1
+                guard let self = self else { return }
+                if featureEnabled(.breaks) && self.isOnBreak {
+                    // Count down break timer
+                    self.breakSecondsRemaining -= 1
+                } else {
+                    // Normal focus timer
+                    self.elapsedSeconds += 1
+                    if featureEnabled(.breaks) {
+                        self.checkBreakEarning()
+                    }
+                }
             }
         }
+    }
+
+    // MARK: - Break Earning
+
+    private func checkBreakEarning() {
+        let focusMinutes = focusSecondsExcludingBreaks / 60
+
+        for (index, milestone) in Self.breakMilestones.enumerated() {
+            if focusMinutes >= milestone.focusMinutesRequired
+                && !earnedMilestoneIndices.contains(index) {
+                earnedMilestoneIndices.insert(index)
+                earnedBreaks.append(BreakOption(durationMinutes: milestone.breakMinutes))
+
+                #if DEBUG
+                print("[AppState] Break earned: \(milestone.breakMinutes)min at \(focusMinutes)min focus")
+                #endif
+            }
+        }
+    }
+
+    // MARK: - Break Lifecycle
+
+    func startBreak(_ breakOption: BreakOption) {
+        guard !isOnBreak else { return }
+        // Remove this break from earned list
+        earnedBreaks.removeAll { $0.id == breakOption.id }
+        isOnBreak = true
+        breakSecondsRemaining = breakOption.durationSeconds
+        breakTotalDuration = breakOption.durationSeconds
+        breakStartDate = Date()
+
+        #if DEBUG
+        print("[AppState] Break started: \(breakOption.durationMinutes)min")
+        #endif
+    }
+
+    func endBreak() {
+        guard isOnBreak else { return }
+        if let start = breakStartDate {
+            totalBreakSecondsTaken += Int(Date().timeIntervalSince(start))
+        }
+        isOnBreak = false
+        breakSecondsRemaining = 0
+        breakTotalDuration = 0
+        breakStartDate = nil
+
+        #if DEBUG
+        print("[AppState] Break ended. Total break time: \(totalBreakSecondsTaken)s")
+        #endif
+    }
+
+    func resetBreakState() {
+        earnedBreaks = []
+        isOnBreak = false
+        breakSecondsRemaining = 0
+        totalBreakSecondsTaken = 0
+        breakStartDate = nil
+        breakTotalDuration = 0
+        earnedMilestoneIndices = []
     }
 
     // MARK: - Focus History Helpers
@@ -641,33 +869,42 @@ class AppState: ObservableObject {
 
     /// Splits a session across calendar-day boundaries and logs each segment to focusHistory.
     /// Example: 11pm–3am logs 1h to day 1, 3h to day 2. Session count goes to start day only.
-    private func logSessionAcrossDays(start: Date, end: Date) {
+    /// - Parameter totalFocusSeconds: If provided, scales wall-clock segments to focus-only time (excluding breaks).
+    /// - Parameter countSession: If false, only logs seconds without incrementing sessionCount (for sessions < 60s).
+    private func logSessionAcrossDays(start: Date, end: Date, totalFocusSeconds: Int? = nil, countSession: Bool = true) {
         let calendar = Calendar.current
         let formatter = DailyFocusEntry.dateFormatter
         var current = start
         var isFirstSegment = true
 
+        let wallClockTotal = end.timeIntervalSince(start)
+        let focusTotal = totalFocusSeconds.map { Double($0) } ?? wallClockTotal
+        // Ratio to scale each segment's wall-clock seconds to focus-only seconds
+        let ratio = wallClockTotal > 0 ? focusTotal / wallClockTotal : 1.0
+
         while current < end {
             guard let nextDayStart = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: current)) else { break }
             let segmentEnd = min(nextDayStart, end)
-            let segmentSeconds = segmentEnd.timeIntervalSince(current)
+            let wallClockSegment = segmentEnd.timeIntervalSince(current)
+            let focusSegment = wallClockSegment * ratio
 
-            if segmentSeconds > 0 {
+            if focusSegment > 0 {
                 let dateKey = formatter.string(from: current)
+                let shouldCountSession = countSession && isFirstSegment
                 if let index = focusHistory.firstIndex(where: { $0.date == dateKey }) {
-                    focusHistory[index].totalSeconds += segmentSeconds
-                    if isFirstSegment {
+                    focusHistory[index].totalSeconds += focusSegment
+                    if shouldCountSession {
                         focusHistory[index].sessionCount += 1
                     }
                 } else {
                     focusHistory.append(DailyFocusEntry(
                         date: dateKey,
-                        totalSeconds: segmentSeconds,
-                        sessionCount: isFirstSegment ? 1 : 0
+                        totalSeconds: focusSegment,
+                        sessionCount: shouldCountSession ? 1 : 0
                     ))
                 }
                 #if DEBUG
-                print("[AppState] Logged \(Int(segmentSeconds))s to \(dateKey)\(isFirstSegment ? " (+1 session)" : "")")
+                print("[AppState] Logged \(Int(focusSegment))s to \(dateKey)\(shouldCountSession ? " (+1 session)" : "")")
                 #endif
             }
 
@@ -684,9 +921,29 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Counts how many calendar days in the session range don't yet have focus data.
+    /// Called BEFORE logSessionAcrossDays so we can detect truly new days.
+    private func countNewDaysInSession(start: Date, end: Date) -> Int {
+        let calendar = Calendar.current
+        let formatter = DailyFocusEntry.dateFormatter
+        var newDays = 0
+        var current = start
+
+        while current < end {
+            let dateKey = formatter.string(from: current)
+            let existing = focusHistory.first(where: { $0.date == dateKey })
+            if existing == nil || existing!.totalSeconds <= 0 {
+                newDays += 1
+            }
+            guard let nextDayStart = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: current)) else { break }
+            current = nextDayStart
+        }
+
+        return newDays
+    }
+
     private func trimOldHistory() {
-        // Keep only the last 90 days
-        let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        let cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.historyRetentionDays, to: Date()) ?? Date()
         let cutoffKey = DailyFocusEntry.dateFormatter.string(from: cutoff)
         focusHistory.removeAll { $0.date < cutoffKey }
     }
@@ -700,10 +957,10 @@ class AppState: ObservableObject {
         let today = calendar.startOfDay(for: Date())
         let formatter = DailyFocusEntry.dateFormatter
 
-        // Build set of dates with 1+ minute sessions
+        // Build set of dates with 10+ minute sessions (streak-qualifying)
         let activeDates: Set<String> = Set(
             focusHistory
-                .filter { $0.totalSeconds >= 60 }
+                .filter { $0.totalSeconds >= Double(AppConstants.minimumSessionForStreak) }
                 .map { $0.date }
         )
 
@@ -738,13 +995,33 @@ class AppState: ObservableObject {
         }
 
         currentStreak = streak
-        if streak > longestStreak {
-            longestStreak = streak
+
+        // Full historical scan for longest streak
+        // (walks all qualifying dates chronologically, not just backwards from today)
+        let sortedDates = activeDates.sorted()
+        var historicalLongest = 0
+        var runLength = 0
+        var previousDate: Date? = nil
+
+        for dateString in sortedDates {
+            guard let date = formatter.date(from: dateString) else { continue }
+            if let prev = previousDate,
+               let expected = calendar.date(byAdding: .day, value: 1, to: prev),
+               calendar.isDate(date, inSameDayAs: expected) {
+                runLength += 1
+            } else {
+                runLength = 1
+            }
+            historicalLongest = max(historicalLongest, runLength)
+            previousDate = date
         }
+
+        longestStreak = max(historicalLongest, streak)
     }
 
     /// Called after each session ends. Updates streak and personal records.
     func updateStreakAndRecords(sessionSeconds: Int) {
+        guard featureEnabled(.streakTracking) else { return }
         let todayKey = DailyFocusEntry.todayKey()
 
         // --- Streak update ---
@@ -759,9 +1036,9 @@ class AppState: ObservableObject {
                 return DailyFocusEntry.dateFormatter.string(from: y)
             }()
 
-            // Only count if today's total is 1+ minutes
+            // Only count if today's total meets streak-qualifying threshold
             let todayTotal = focusHistory.first(where: { $0.date == todayKey })?.totalSeconds ?? 0
-            if todayTotal >= 60 {
+            if Int(todayTotal) >= AppConstants.minimumSessionForStreak {
                 if lastStreakDate == yesterdayKey {
                     currentStreak += 1
                 } else if lastStreakDate != todayKey {
@@ -850,15 +1127,15 @@ class AppState: ObservableObject {
     }
 
     var totalLifetimeSeconds: TimeInterval {
-        focusHistory.reduce(0) { $0 + $1.totalSeconds } + max(0, currentSessionSeconds)
+        cumulativeLifetimeSeconds + max(0, currentSessionSeconds)
     }
 
     var totalLifetimeSessions: Int {
-        focusHistory.reduce(0) { $0 + $1.sessionCount } + (isInSession ? 1 : 0)
+        cumulativeLifetimeSessions + (isInSession ? 1 : 0)
     }
 
     var totalDaysFocused: Int {
-        focusHistory.filter { $0.totalSeconds > 0 }.count
+        cumulativeLifetimeDays
     }
 
     static func formatTime(_ seconds: TimeInterval) -> String {
@@ -877,6 +1154,8 @@ class AppState: ObservableObject {
     // MARK: - Blocking Modes
 
     func addMode(_ mode: BlockingMode) {
+        // Reject empty names
+        guard !mode.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         // Prevent duplicates by name
         guard !modes.contains(where: { $0.name.lowercased() == mode.name.lowercased() }) else {
             // Still set as active if needed
@@ -886,7 +1165,7 @@ class AppState: ObservableObject {
             return
         }
 
-        guard modes.count < 6 else { return }
+        guard modes.count < AppConstants.maxModes else { return }
         modes.append(mode)
         writeModeTokenToShared(mode)
 
@@ -895,7 +1174,9 @@ class AppState: ObservableObject {
             activeModeId = mode.id
         }
         saveState()
-        Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+        if featureEnabled(.cloudSync) {
+            Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+        }
     }
 
     /// Delete a mode and auto-disable any schedules that reference it.
@@ -903,6 +1184,8 @@ class AppState: ObservableObject {
     @discardableResult
     func deleteMode(_ mode: BlockingMode) -> [FocusSchedule] {
         guard modes.count > 1 else { return [] }
+        // Prevent deleting the active mode during a session
+        guard !isInSession || mode.id != activeModeId else { return [] }
         removeModeTokenFromShared(mode)
         modes.removeAll { $0.id == mode.id }
 
@@ -917,7 +1200,9 @@ class AppState: ObservableObject {
             activeModeId = modes.first?.id
         }
         saveState()
-        Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+        if featureEnabled(.cloudSync) {
+            Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+        }
 
         #if DEBUG
         if !affected.isEmpty {
@@ -928,11 +1213,15 @@ class AppState: ObservableObject {
     }
 
     func updateMode(_ mode: BlockingMode) {
+        // Reject empty names
+        guard !mode.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if let index = modes.firstIndex(where: { $0.id == mode.id }) {
             modes[index] = mode
             writeModeTokenToShared(mode)
             saveState()
-            Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+            if featureEnabled(.cloudSync) {
+                Task { @MainActor in CloudSyncManager.shared.syncToCloud(appState: self) }
+            }
         }
     }
 
@@ -967,10 +1256,8 @@ class AppState: ObservableObject {
 
     // MARK: - Schedules
 
-    static let maxSchedules = 6
-
     func addSchedule(_ schedule: FocusSchedule) {
-        guard schedules.count < Self.maxSchedules else { return }
+        guard schedules.count < AppConstants.maxSchedules else { return }
         schedules.append(schedule)
         saveState()
     }
@@ -1032,7 +1319,7 @@ class AppState: ObservableObject {
         selectedApps = FamilyActivitySelection(includeEntireCategory: true)
         modes = []
         activeModeId = nil
-        emergencyUnlocksRemaining = 5
+        emergencyUnlocksRemaining = AppConstants.startingOverrides
         totalBlockedSeconds = 0
         focusHistory = []
         strictModeEnabled = false
@@ -1047,7 +1334,9 @@ class AppState: ObservableObject {
         longestStreak = 0
 
         // 6. Reset non-published properties
-        lastEmergencyResetDate = nil
+        lastOverrideUsedDate = nil
+        overrideEarnBackDays = 0
+        pendingOverrideEarnedNotification = false
         registrationDate = nil
         blockingStartDate = nil
         focusDate = nil
@@ -1058,6 +1347,9 @@ class AppState: ObservableObject {
         bestDayDate = nil
         bestWeekSeconds = 0
         bestWeekStart = nil
+        cumulativeLifetimeSeconds = 0
+        cumulativeLifetimeSessions = 0
+        cumulativeLifetimeDays = 0
 
         // 7. Reset transient flags
         isReturningFromNewDevice = false
@@ -1067,5 +1359,72 @@ class AppState: ObservableObject {
         print("[AppState] All local data wiped")
         #endif
     }
+
+    // MARK: - Demo Data (App Store screenshots)
+
+    #if DEBUG
+    func injectDemoData() {
+        let formatter = DailyFocusEntry.dateFormatter
+        let calendar = Calendar.current
+        let today = Date()
+
+        var demoHistory: [DailyFocusEntry] = []
+
+        // 21 days of varied focus data (seconds)
+        let dailySeconds: [Int] = [
+            7200, 5400, 10800, 3600, 9000, 2700, 3600,   // week 1
+            4500, 7800, 6000, 1800, 8400, 5400, 0,        // week 2
+            10200, 3600, 7200, 9600, 4800, 1200, 6000      // week 3
+        ]
+
+        for i in 0..<21 {
+            let date = calendar.date(byAdding: .day, value: -(20 - i), to: today)!
+            let seconds = dailySeconds[i]
+            if seconds > 0 {
+                let sessions = max(1, seconds / 3600)
+                demoHistory.append(DailyFocusEntry(
+                    date: formatter.string(from: date),
+                    totalSeconds: TimeInterval(seconds),
+                    sessionCount: sessions
+                ))
+            }
+        }
+
+        focusHistory = demoHistory
+
+        // Streaks
+        currentStreak = 7
+        longestStreak = 12
+        lastStreakDate = DailyFocusEntry.todayKey()
+
+        // Cumulative lifetime
+        cumulativeLifetimeSeconds = 38 * 3600  // 38 hours
+        cumulativeLifetimeSessions = 47
+        cumulativeLifetimeDays = 18
+
+        // Personal records
+        longestSessionSeconds = 10800  // 3 hours
+        longestSessionDate = calendar.date(byAdding: .day, value: -5, to: today)
+        bestDaySeconds = 10800
+        bestDayDate = calendar.date(byAdding: .day, value: -5, to: today)
+        bestWeekSeconds = 42300
+        bestWeekStart = calendar.date(byAdding: .day, value: -13, to: today)
+
+        // Registration date (for avg/week calculations)
+        registrationDate = calendar.date(byAdding: .day, value: -21, to: today)
+
+        // Overrides (show partial earn-back)
+        emergencyUnlocksRemaining = 4
+        overrideEarnBackDays = 4
+
+        saveState()
+
+        if featureEnabled(.cloudSync) {
+            Task { @MainActor in
+                CloudSyncManager.shared.syncToCloud(appState: self)
+            }
+        }
+    }
+    #endif
 
 }

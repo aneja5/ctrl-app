@@ -109,7 +109,7 @@ struct RootView: View {
 
             blockingManager.ensureConsistentState()
             appState.restoreSessionIfNeeded()
-            if FeatureFlags.schedulesEnabled {
+            if featureEnabled(.schedules) {
                 scheduleManager.reregisterAllSchedules(
                     schedules: appState.schedules,
                     modes: appState.modes
@@ -148,7 +148,7 @@ struct RootView: View {
         guard !defaults.bool(forKey: "ctrl_migrated_named_stores") else { return }
 
         // Apply shields to named stores first, then clear the unnamed one
-        if FeatureFlags.schedulesEnabled {
+        if featureEnabled(.schedules) {
             scheduleManager.syncScheduleShields()
         }
         ManagedSettingsStore().clearAllSettings()

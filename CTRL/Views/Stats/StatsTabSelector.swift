@@ -6,6 +6,14 @@ enum StatsTab: String, CaseIterable {
     case week
     case month
     case lifetime
+
+    var isEnabled: Bool {
+        switch self {
+        case .week: return featureEnabled(.weeklyStats)
+        case .month: return featureEnabled(.monthlyStats)
+        case .lifetime: return featureEnabled(.lifetimeStats)
+        }
+    }
 }
 
 // MARK: - Tab Selector View
@@ -15,7 +23,7 @@ struct StatsTabSelector: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(StatsTab.allCases, id: \.self) { tab in
+            ForEach(StatsTab.allCases.filter(\.isEnabled), id: \.self) { tab in
                 Button(action: {
                     withAnimation(.easeOut(duration: 0.2)) {
                         selected = tab

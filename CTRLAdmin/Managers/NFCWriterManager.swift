@@ -118,7 +118,9 @@ extension NFCWriterManager: NFCNDEFReaderSessionDelegate {
     }
 
     func readerSessionDidBecomeActive(_ session: NFCNDEFReaderSession) {
+        #if DEBUG
         print("[NFCWriter] Session active")
+        #endif
     }
 
     func readerSession(_ session: NFCNDEFReaderSession, didDetectNDEFs messages: [NFCNDEFMessage]) {

@@ -120,12 +120,13 @@ struct OnboardingView: View {
             }
         }
 
-        // Fresh user reaching ready: create default Focus mode
-        if nextStep == .ready && appState.modes.isEmpty {
-            let mode = BlockingMode(name: "Focus")
-            appState.addMode(mode)
+        // Fresh user reaching ready: create default modes
+        if featureEnabled(.defaultModes) && nextStep == .ready && appState.modes.isEmpty {
+            for name in AppConstants.defaultModeNames {
+                appState.addMode(BlockingMode(name: name))
+            }
             #if DEBUG
-            print("[Onboarding] Auto-created default Focus mode")
+            print("[Onboarding] Auto-created default modes: \(AppConstants.defaultModeNames.joined(separator: ", "))")
             #endif
         }
 

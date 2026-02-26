@@ -59,7 +59,7 @@ struct ScheduleModePickerView: View {
 
                     // Create mode row (only when callback provided)
                     if let onCreateMode = onCreateMode,
-                       appState.modes.count < AppState.maxModes {
+                       appState.modes.count < AppConstants.maxModes {
                         Button(action: {
                             dismiss()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

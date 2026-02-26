@@ -3,8 +3,11 @@ import CryptoKit
 
 struct CTRLTokenValidator {
 
-    // IMPORTANT: Change this before shipping!
-    private static let secretKey = "9417055697"
+    private static var secretKey: String {
+        let encoded: [UInt8] = [0x92, 0xF9, 0xDE, 0x25, 0x04, 0x63, 0x4D, 0xAC, 0x85, 0xE9]
+        let mask: [UInt8] = [0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE]
+        return String(bytes: zip(encoded, mask).map { $0 ^ $1 }, encoding: .utf8) ?? ""
+    }
     private static let tokenPrefix = "CTRL-"
 
     // MARK: - Validation (Used by both CTRL and CTRLAdmin)
